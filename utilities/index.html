@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Utilities — PDF Cowboy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+<style>
+html, body { height: 100%; overflow: hidden; }
+body { display: flex; flex-direction: column; padding-top: 44px; }
+
+/* ── Tab bar ─────────────────────────────────────────────────── */
+.tool-tabs {
+  display: flex;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tool-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 11px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.tool-tab:hover { color: var(--text); background: rgba(245,166,35,0.05); }
+.tool-tab.active { color: var(--gold); border-bottom-color: var(--gold); background: rgba(245,166,35,0.07); }
+
+/* ── Main layout ─────────────────────────────────────────────── */
+.util-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  background: #0a0400;
+}
+
+/* ── Central card ────────────────────────────────────────────── */
+.util-card {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  max-width: 520px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  margin: 24px;
+}
+.util-card.active { display: flex; }
+
+/* Drop zone inside card */
+.util-drop {
+  width: 100%;
+  border-bottom: 1px solid var(--border);
+  padding: 36px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.util-drop:hover, .util-drop.drag-over {
+  background: rgba(245,166,35,0.04);
+}
+.util-drop-icon { font-size: 44px; opacity: 0.3; }
+.util-drop-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  opacity: 0.5;
+}
+.util-drop-sub { font-size: 11px; color: var(--muted); }
+
+/* Loaded file strip */
+.util-file-strip {
+  display: none;
+  width: 100%;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.util-file-strip.visible { display: flex; }
+.util-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
+.util-file-meta { color: var(--muted); font-family: var(--font-mono); font-size: 11px; flex-shrink: 0; }
+.util-file-clear {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  padding: 3px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; flex-shrink: 0;
+  font-family: var(--font-ui); transition: all 0.13s;
+}
+.util-file-clear:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Settings area inside card */
+.util-settings { width: 100%; padding: 20px 24px; }
+
+/* Field */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; font-weight: 500; }
+.field input[type="text"],
+.field input[type="password"],
+.field select {
+  width: 100%;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 10px;
+  border-radius: 6px; font-size: 13px; font-family: var(--font-ui);
+  outline: none; transition: border-color 0.13s;
+}
+.field input:focus, .field select:focus { border-color: var(--gold); }
+.field input::placeholder { color: var(--muted); }
+
+/* Password strength */
+.pw-strength {
+  display: flex;
+  gap: 3px;
+  margin-top: 5px;
+}
+.pw-bar {
+  flex: 1; height: 3px; border-radius: 2px;
+  background: var(--border); transition: background 0.2s;
+}
+.pw-bar.weak   { background: var(--accent); }
+.pw-bar.medium { background: var(--gold); }
+.pw-bar.strong { background: var(--success); }
+.pw-label { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+/* Checkboxes */
+.check-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted); margin-bottom: 8px; cursor: pointer;
+}
+.check-row input[type="checkbox"] { accent-color: var(--gold); width: 14px; height: 14px; cursor: pointer; }
+
+/* Info boxes */
+.info-box {
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+  font-size: 11px; color: var(--muted); line-height: 1.6;
+}
+.info-box.warning { border-color: rgba(245,166,35,0.3); background: rgba(245,166,35,0.05); color: var(--gold); }
+.info-box.success { border-color: rgba(76,175,80,0.3); background: rgba(76,175,80,0.05); color: var(--success); }
+.info-box.error   { border-color: rgba(232,84,26,0.3); background: rgba(232,84,26,0.05); color: var(--accent); }
+
+/* Result stats */
+.result-stats {
+  display: flex; gap: 12px; margin-bottom: 12px;
+}
+.stat-box {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px; text-align: center;
+}
+.stat-val { font-size: 18px; font-weight: 700; color: var(--gold); font-family: var(--font-mono); }
+.stat-key { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* Action button */
+.util-action-btn {
+  width: 100%;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 7px;
+  padding: 12px;
+  font-size: 14px; font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: opacity 0.15s;
+  margin-top: 4px;
+}
+.util-action-btn:hover { opacity: 0.88; }
+.util-action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.util-action-btn.gold { background: var(--gold); color: #000; }
+.util-action-btn.success-btn { background: var(--success); }
+
+/* Progress */
+.progress-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; height: 5px; margin-bottom: 8px; }
+.progress-bar  { height: 100%; background: var(--gold); border-radius: 3px; transition: width 0.3s; }
+
+/* Spinner */
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status bar */
+.status-bar {
+  height: 26px; background: var(--panel); border-top: 1px solid var(--border);
+  padding: 0 14px; display: flex; align-items: center; gap: 12px;
+  font-size: 11px; color: var(--muted); flex-shrink: 0;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.green  { background: var(--success); }
+.dot.yellow { background: var(--gold); }
+.dot.red    { background: var(--accent); }
+
+/* Toast */
+#toast-container {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+  z-index: 300; display: flex; flex-direction: column; gap: 5px;
+  align-items: center; pointer-events: none;
+}
+.toast {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5); animation: toast-in 0.2s ease; white-space: nowrap;
+}
+.toast.success { border-color: var(--success); color: var(--success); }
+.toast.error   { border-color: var(--accent);  color: var(--accent); }
+@keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body>
+
+<!-- ═══ SITE HEADER ════════════════════════════════════════════ -->
+<header class="site-header" id="site-header"></header>
+<script src="../assets/js/nav.js"></script>
+
+<!-- ═══ TAB BAR ═══════════════════════════════════════════════ -->
+<div class="tool-tabs">
+  <button class="tool-tab active" data-tab="protect">🔒 Protect</button>
+  <button class="tool-tab" data-tab="unlock">🔓 Unlock</button>
+  <button class="tool-tab" data-tab="compress">⚡ Compress</button>
+  <button class="tool-tab" data-tab="repair">🔧 Repair</button>
+</div>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════════ -->
+<div class="util-main" id="utilMain">
+
+  <!-- ══ PROTECT ══════════════════════════════════════════════ -->
+  <div class="util-card active" id="card-protect">
+    <div class="util-drop" id="drop-protect">
+      <span class="util-drop-icon">🔒</span>
+      <p class="util-drop-title">Drop a PDF to protect</p>
+      <p class="util-drop-sub">Or click to browse · Password-protect your PDF</p>
+    </div>
+    <input type="file" id="file-protect" accept=".pdf,application/pdf" style="display:none">
+
+    <div class="util-file-strip" id="strip-protect">
+      <span>📄</span>
+      <span class="util-file-name" id="fname-protect">—</span>
+      <span class="util-file-meta" id="fmeta-protect"></span>
+      <button class="util-file-clear" data-clear="protect">✕ Clear</button>
+    </div>
+
+    <div class="util-settings">
+      <div class="field">
+        <label>Open password <span style="color:var(--accent)">*</span></label>
+        <input type="password" id="protect-open-pw" placeholder="Password to open the PDF" autocomplete="new-password">
+        <div class="pw-strength" id="pw-strength">
+          <div class="pw-bar" id="pw-bar-1"></div>
+          <div class="pw-bar" id="pw-bar-2"></div>
+          <div class="pw-bar" id="pw-bar-3"></div>
+          <div class="pw-bar" id="pw-bar-4"></div>
+        </div>
+        <div class="pw-label" id="pw-label">Enter a password</div>
+      </div>
+      <div class="field">
+        <label>Confirm password</label>
+        <input type="password" id="protect-confirm-pw" placeholder="Confirm password" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label>Owner password <span style="color:var(--muted);font-size:10px">(optional — controls edit permissions)</span></label>
+        <input type="password" id="protect-owner-pw" placeholder="Leave blank to use open password" autocomplete="new-password">
+      </div>
+
+      <div class="field" style="margin-bottom:14px">
+        <label>Restrict permissions</label>
+        <label class="check-row"><input type="checkbox" id="perm-print" checked> Allow printing</label>
+        <label class="check-row"><input type="checkbox" id="perm-copy"> Allow copying text</label>
+        <label class="check-row"><input type="checkbox" id="perm-modify"> Allow modifying</label>
+      </div>
+
+      <div class="field">
+        <label>Output filename</label>
+        <input type="text" id="protect-outname" placeholder="protected.pdf" value="protected.pdf" style="font-family:var(--font-mono);font-size:12px">
+      </div>
+
+      <div class="progress-wrap" id="progress-protect" style="display:none">
+        <div class="progress-bar" id="pbar-protect" style="width:0%"></div>
+      </div>
+
+      <button class="util-action-btn" id="btn-protect" disabled>
+        🔒 Protect PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ UNLOCK ═══════════════════════════════════════════════ -->
+  <div class="util-card" id="card-unlock">
+    <div class="util-drop" id="drop-unlock">
+      <span class="util-drop-icon">🔓</span>
+      <p class="util-drop-title">Drop a protected PDF</p>
+      <p class="util-drop-sub">Or click to browse · Removes password protection</p>
+    </div>
+    <input type="file" id="file-unlock" accept=".pdf,application/pdf" style="display:none">
+
+    <div class="util-file-strip" id="strip-unlock">
+      <span>📄</span>
+      <span class="util-file-name" id="fname-unlock">—</span>
+      <span class="util-file-meta" id="fmeta-unlock"></span>
+      <button class="util-file-clear" data-clear="unlock">✕ Clear</button>
+    </div>
+
+    <div class="util-settings">
+      <div class="info-box">
+        Enter the current password to unlock and save an unprotected copy. The original file is not modified.
+      </div>
+
+      <div class="field">
+        <label>Current password</label>
+        <input type="password" id="unlock-pw" placeholder="Enter the PDF password" autocomplete="current-password">
+      </div>
+
+      <div class="field">
+        <label>Output filename</label>
+        <input type="text" id="unlock-outname" placeholder="unlocked.pdf" value="unlocked.pdf" style="font-family:var(--font-mono);font-size:12px">
+      </div>
+
+      <div id="unlock-result" style="display:none"></div>
+
+      <div class="progress-wrap" id="progress-unlock" style="display:none">
+        <div class="progress-bar" id="pbar-unlock" style="width:0%"></div>
+      </div>
+
+      <button class="util-action-btn gold" id="btn-unlock" disabled>
+        🔓 Unlock PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ COMPRESS ═════════════════════════════════════════════ -->
+  <div class="util-card" id="card-compress">
+    <div class="util-drop" id="drop-compress">
+      <span class="util-drop-icon">⚡</span>
+      <p class="util-drop-title">Drop a PDF to compress</p>
+      <p class="util-drop-sub">Or click to browse · Reduces file size by removing redundant data</p>
+    </div>
+    <input type="file" id="file-compress" accept=".pdf,application/pdf" style="display:none">
+
+    <div class="util-file-strip" id="strip-compress">
+      <span>📄</span>
+      <span class="util-file-name" id="fname-compress">—</span>
+      <span class="util-file-meta" id="fmeta-compress"></span>
+      <button class="util-file-clear" data-clear="compress">✕ Clear</button>
+    </div>
+
+    <div class="util-settings">
+      <div class="info-box warning">
+        ⚠ Client-side compression removes redundant metadata and restructures the PDF. It works best on PDFs with lots of text or annotations. Image-heavy PDFs may see limited reduction.
+      </div>
+
+      <div id="compress-result" style="display:none">
+        <div class="result-stats">
+          <div class="stat-box">
+            <div class="stat-val" id="compress-before">—</div>
+            <div class="stat-key">Original</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="compress-after">—</div>
+            <div class="stat-key">Compressed</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="compress-saving">—</div>
+            <div class="stat-key">Saving</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Output filename</label>
+        <input type="text" id="compress-outname" placeholder="compressed.pdf" value="compressed.pdf" style="font-family:var(--font-mono);font-size:12px">
+      </div>
+
+      <div class="progress-wrap" id="progress-compress" style="display:none">
+        <div class="progress-bar" id="pbar-compress" style="width:0%"></div>
+      </div>
+
+      <button class="util-action-btn" id="btn-compress" disabled>
+        ⚡ Compress PDF
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ REPAIR ═══════════════════════════════════════════════ -->
+  <div class="util-card" id="card-repair">
+    <div class="util-drop" id="drop-repair">
+      <span class="util-drop-icon">🔧</span>
+      <p class="util-drop-title">Drop a damaged PDF</p>
+      <p class="util-drop-sub">Or click to browse · Attempts to recover and rebuild the PDF</p>
+    </div>
+    <input type="file" id="file-repair" accept=".pdf,application/pdf" style="display:none">
+
+    <div class="util-file-strip" id="strip-repair">
+      <span>📄</span>
+      <span class="util-file-name" id="fname-repair">—</span>
+      <span class="util-file-meta" id="fmeta-repair"></span>
+      <button class="util-file-clear" data-clear="repair">✕ Clear</button>
+    </div>
+
+    <div class="util-settings">
+      <div class="info-box">
+        Repair attempts to reload and rebuild the PDF structure. It can fix minor corruption — truncated files, broken cross-reference tables, and encoding issues. Severely damaged files may not be recoverable.
+      </div>
+
+      <div id="repair-result" style="display:none"></div>
+
+      <div class="field">
+        <label>Output filename</label>
+        <input type="text" id="repair-outname" placeholder="repaired.pdf" value="repaired.pdf" style="font-family:var(--font-mono);font-size:12px">
+      </div>
+
+      <div class="progress-wrap" id="progress-repair" style="display:none">
+        <div class="progress-bar" id="pbar-repair" style="width:0%"></div>
+      </div>
+
+      <button class="util-action-btn gold" id="btn-repair" disabled>
+        🔧 Attempt Repair
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ STATUS BAR ════════════════════════════════════════════ -->
+<div class="status-bar">
+  <span class="dot" id="statusDot"></span>
+  <span id="statusText">Select a tool and drop a PDF to begin</span>
+  <span style="flex:1"></span>
+  <span id="statusHint" style="color:var(--muted)"></span>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SCRIPTS
+══════════════════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+'use strict';
+
+let currentTab = 'protect';
+let files = {}; // { tabName: { file, buf } }
+
+/* ══════════════════════════════════════════════════════════════
+   TAB SWITCHING
+══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tool-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentTab = btn.dataset.tab;
+    document.querySelectorAll('.tool-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.util-card').forEach(c => c.classList.remove('active'));
+    document.getElementById('card-' + currentTab).classList.add('active');
+    updateStatus();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   DROP / FILE LOADING
+══════════════════════════════════════════════════════════════ */
+['protect','unlock','compress','repair'].forEach(tab => {
+  const drop = document.getElementById('drop-' + tab);
+  const input = document.getElementById('file-' + tab);
+
+  drop.addEventListener('click', () => input.click());
+  input.addEventListener('change', e => { if(e.target.files[0]) loadFile(tab, e.target.files[0]); input.value=''; });
+
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag-over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag-over'); }));
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f && (f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'))) loadFile(tab, f);
+    else toast('Please drop a PDF file', 'error');
+  });
+});
+
+// Clear buttons
+document.querySelectorAll('[data-clear]').forEach(btn => {
+  btn.addEventListener('click', () => clearFile(btn.dataset.clear));
+});
+
+async function loadFile(tab, file) {
+  setStatus('yellow', 'Loading…', '');
+  try {
+    const buf = await file.arrayBuffer();
+    files[tab] = { file, buf };
+
+    document.getElementById('fname-' + tab).textContent = file.name;
+    document.getElementById('fmeta-' + tab).textContent = fmtBytes(file.size);
+    document.getElementById('strip-' + tab).classList.add('visible');
+    document.getElementById('drop-' + tab).style.display = 'none';
+    document.getElementById('btn-' + tab).disabled = false;
+
+    // Auto-fill output name
+    const base = file.name.replace(/\.pdf$/i, '');
+    const suffixes = { protect:'protected', unlock:'unlocked', compress:'compressed', repair:'repaired' };
+    document.getElementById(tab + '-outname').value = `${base}_${suffixes[tab]}.pdf`;
+
+    // Reset result panels
+    const rp = document.getElementById(tab + '-result');
+    if (rp) rp.style.display = 'none';
+
+    setStatus('green', `${file.name} — ${fmtBytes(file.size)}`, 'Ready');
+    updateStatus();
+  } catch(err) {
+    toast('Could not read file: ' + err.message, 'error');
+    setStatus('red', 'Load failed', '');
+  }
+}
+
+function clearFile(tab) {
+  files[tab] = null;
+  document.getElementById('strip-' + tab).classList.remove('visible');
+  document.getElementById('drop-' + tab).style.display = '';
+  document.getElementById('btn-' + tab).disabled = true;
+  const rp = document.getElementById(tab + '-result');
+  if (rp) rp.style.display = 'none';
+  setStatus('', 'Select a tool and drop a PDF to begin', '');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PASSWORD STRENGTH
+══════════════════════════════════════════════════════════════ */
+document.getElementById('protect-open-pw').addEventListener('input', e => {
+  const pw = e.target.value;
+  const score = pwScore(pw);
+  const bars  = document.querySelectorAll('.pw-bar');
+  const label = document.getElementById('pw-label');
+  bars.forEach((b, i) => {
+    b.className = 'pw-bar';
+    if (i < score) b.classList.add(score <= 1 ? 'weak' : score <= 2 ? 'medium' : 'strong');
+  });
+  label.textContent = pw.length === 0 ? 'Enter a password' : score <= 1 ? 'Weak' : score <= 2 ? 'Fair' : score <= 3 ? 'Good' : 'Strong';
+  label.style.color = score <= 1 ? 'var(--accent)' : score <= 2 ? 'var(--gold)' : 'var(--success)';
+});
+
+function pwScore(pw) {
+  let s = 0;
+  if (pw.length >= 8)  s++;
+  if (pw.length >= 12) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return Math.min(4, s);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PROTECT
+══════════════════════════════════════════════════════════════ */
+document.getElementById('btn-protect').addEventListener('click', async () => {
+  const f = files['protect'];
+  if (!f) return;
+
+  const openPw    = document.getElementById('protect-open-pw').value;
+  const confirmPw = document.getElementById('protect-confirm-pw').value;
+  const ownerPw   = document.getElementById('protect-owner-pw').value || openPw;
+
+  if (!openPw) { toast('Enter a password', 'error'); return; }
+  if (openPw !== confirmPw) { toast('Passwords do not match', 'error'); return; }
+
+  const btn = document.getElementById('btn-protect');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Protecting…';
+  showProgress('protect', 30);
+
+  try {
+    const doc = await PDFLib.PDFDocument.load(f.buf.slice(0), { ignoreEncryption: true });
+    showProgress('protect', 70);
+
+    const allowPrinting = document.getElementById('perm-print').checked;
+    const allowCopying  = document.getElementById('perm-copy').checked;
+    const allowModifying= document.getElementById('perm-modify').checked;
+
+    const permissions = {
+      printing:          allowPrinting  ? PDFLib.PrintingAllowedValues.LowResolution : PDFLib.PrintingAllowedValues.None,
+      modifying:         allowModifying,
+      copying:           allowCopying,
+      annotating:        allowModifying,
+      fillingForms:      allowModifying,
+      contentAccessibility: true,
+      documentAssembly:  allowModifying,
+    };
+
+    const encrypted = await doc.save({
+      userPassword:  openPw,
+      ownerPassword: ownerPw,
+      permissions,
+    });
+
+    showProgress('protect', 95);
+    const name = sanitise(document.getElementById('protect-outname').value) || 'protected.pdf';
+    downloadBlob(new Blob([encrypted], {type:'application/pdf'}), name);
+    showProgress('protect', 100);
+    toast('PDF protected and downloaded', 'success');
+  } catch(err) {
+    console.error(err);
+    toast('Protection failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔒 Protect PDF';
+    setTimeout(() => hideProgress('protect'), 2000);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   UNLOCK
+══════════════════════════════════════════════════════════════ */
+document.getElementById('btn-unlock').addEventListener('click', async () => {
+  const f = files['unlock'];
+  if (!f) return;
+
+  const pw  = document.getElementById('unlock-pw').value;
+  const btn = document.getElementById('btn-unlock');
+  const resultEl = document.getElementById('unlock-result');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Unlocking…';
+  showProgress('unlock', 30);
+  resultEl.style.display = 'none';
+
+  try {
+    const doc = await PDFLib.PDFDocument.load(f.buf.slice(0), {
+      ignoreEncryption: false,
+      password: pw || undefined,
+    });
+    showProgress('unlock', 80);
+
+    const unlocked = await doc.save();
+    showProgress('unlock', 95);
+
+    const name = sanitise(document.getElementById('unlock-outname').value) || 'unlocked.pdf';
+    downloadBlob(new Blob([unlocked], {type:'application/pdf'}), name);
+    showProgress('unlock', 100);
+
+    resultEl.innerHTML = '<div class="info-box success">✓ Password removed — unprotected PDF downloaded</div>';
+    resultEl.style.display = 'block';
+    toast('PDF unlocked', 'success');
+  } catch(err) {
+    console.error(err);
+    resultEl.innerHTML = '<div class="info-box error">✕ Could not unlock — check the password is correct</div>';
+    resultEl.style.display = 'block';
+    toast('Unlock failed — wrong password?', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔓 Unlock PDF';
+    setTimeout(() => hideProgress('unlock'), 2000);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   COMPRESS
+══════════════════════════════════════════════════════════════ */
+document.getElementById('btn-compress').addEventListener('click', async () => {
+  const f = files['compress'];
+  if (!f) return;
+
+  const btn = document.getElementById('btn-compress');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Compressing…';
+  showProgress('compress', 20);
+
+  try {
+    // Load with objectCompression enabled to reduce size
+    const doc = await PDFLib.PDFDocument.load(f.buf.slice(0), { ignoreEncryption: true });
+    showProgress('compress', 60);
+
+    const compressed = await doc.save({
+      useObjectStreams: true,      // Packs objects more efficiently
+      addDefaultPage: false,
+      objectsPerTick: 50,
+    });
+    showProgress('compress', 90);
+
+    const before = f.buf.byteLength;
+    const after  = compressed.byteLength;
+    const saving = before - after;
+    const pct    = ((saving / before) * 100).toFixed(1);
+
+    const resultEl = document.getElementById('compress-result');
+    document.getElementById('compress-before').textContent  = fmtBytes(before);
+    document.getElementById('compress-after').textContent   = fmtBytes(after);
+    document.getElementById('compress-saving').textContent  = saving > 0 ? `-${pct}%` : '0%';
+    document.getElementById('compress-saving').style.color  = saving > 0 ? 'var(--success)' : 'var(--muted)';
+    resultEl.style.display = 'block';
+
+    const name = sanitise(document.getElementById('compress-outname').value) || 'compressed.pdf';
+    downloadBlob(new Blob([compressed], {type:'application/pdf'}), name);
+    showProgress('compress', 100);
+    toast(saving > 0 ? `Reduced by ${pct}% (${fmtBytes(saving)})` : 'No size reduction possible', saving > 0 ? 'success' : '');
+  } catch(err) {
+    console.error(err);
+    toast('Compression failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Compress PDF';
+    setTimeout(() => hideProgress('compress'), 2000);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   REPAIR
+══════════════════════════════════════════════════════════════ */
+document.getElementById('btn-repair').addEventListener('click', async () => {
+  const f = files['repair'];
+  if (!f) return;
+
+  const btn = document.getElementById('btn-repair');
+  const resultEl = document.getElementById('repair-result');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Repairing…';
+  showProgress('repair', 20);
+  resultEl.style.display = 'none';
+
+  try {
+    // Try loading with maximum tolerance
+    showProgress('repair', 40);
+    const doc = await PDFLib.PDFDocument.load(f.buf.slice(0), {
+      ignoreEncryption: true,
+      throwOnInvalidObject: false,
+      updateMetadata: false,
+    });
+    showProgress('repair', 75);
+
+    const pageCount = doc.getPageCount();
+    const repaired  = await doc.save({ useObjectStreams: true });
+    showProgress('repair', 95);
+
+    const name = sanitise(document.getElementById('repair-outname').value) || 'repaired.pdf';
+    downloadBlob(new Blob([repaired], {type:'application/pdf'}), name);
+    showProgress('repair', 100);
+
+    resultEl.innerHTML = `<div class="info-box success">✓ Repair successful — ${pageCount} page${pageCount!==1?'s':''} recovered</div>`;
+    resultEl.style.display = 'block';
+    toast(`Repaired — ${pageCount} pages recovered`, 'success');
+  } catch(err) {
+    console.error(err);
+    resultEl.innerHTML = '<div class="info-box error">✕ Could not repair this PDF — the file may be too severely damaged</div>';
+    resultEl.style.display = 'block';
+    toast('Repair failed', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔧 Attempt Repair';
+    setTimeout(() => hideProgress('repair'), 2000);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════════════════════════ */
+function showProgress(tab, pct) {
+  const wrap = document.getElementById('progress-' + tab);
+  const bar  = document.getElementById('pbar-' + tab);
+  wrap.style.display = '';
+  bar.style.width = pct + '%';
+}
+function hideProgress(tab) {
+  document.getElementById('progress-' + tab).style.display = 'none';
+}
+function updateStatus() {
+  const f = files[currentTab];
+  if (!f) setStatus('', 'Drop a PDF into the ' + currentTab + ' panel to begin', '');
+  else setStatus('green', f.file.name, 'Ready to ' + currentTab);
+}
+function setStatus(colour, text, hint) {
+  document.getElementById('statusDot').className = 'dot' + (colour ? ' '+colour : '');
+  document.getElementById('statusText').textContent = text;
+  document.getElementById('statusHint').textContent = hint || '';
+}
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+function sanitise(name) {
+  let n = (name||'').trim().replace(/[<>:"/\\|?*\x00-\x1f]/g,'_');
+  if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
+  return n;
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+setStatus('', 'Select a tool and drop a PDF to begin', '');
+</script>
+</body>
+</html>

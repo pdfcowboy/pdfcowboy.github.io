@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Content — PDF Cowboy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/style.css">
+<style>
+html, body { height: 100%; overflow: hidden; }
+body { display: flex; flex-direction: column; padding-top: 44px; }
+
+/* ── Toolbar ─────────────────────────────────────────────────── */
+.content-toolbar {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.tool-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 3px;
+}
+
+.tool-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.13s;
+  white-space: nowrap;
+}
+.tool-btn:hover  { background: var(--surface); color: var(--text); }
+.tool-btn.active { background: var(--accent);  color: #fff; }
+.tool-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.tool-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+
+/* Colour picker inline */
+.colour-btn {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.colour-btn input[type="color"] {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+.colour-preview {
+  width: 100%; height: 100%;
+  border-radius: 4px;
+}
+
+/* Size slider */
+.size-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.size-wrap input[type="range"] {
+  width: 70px;
+  accent-color: var(--gold);
+}
+#sizeLabel { color: var(--gold); font-family: var(--font-mono); min-width: 22px; }
+
+/* Opacity slider */
+.opacity-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.opacity-wrap input[type="range"] {
+  width: 60px;
+  accent-color: var(--gold);
+}
+#opacityLabel { color: var(--gold); font-family: var(--font-mono); min-width: 30px; }
+
+/* Undo/redo */
+.hdr-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transition: all 0.13s;
+}
+.hdr-btn:hover { background: var(--gold); color: #000; border-color: var(--gold); }
+.hdr-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.hdr-btn.primary:hover { opacity: 0.85; }
+.hdr-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ── Main layout ─────────────────────────────────────────────── */
+.content-main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Work area ───────────────────────────────────────────────── */
+.work-area {
+  flex: 1;
+  overflow: auto;
+  background: #0a0400;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+/* Drop zone */
+#dropZone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  cursor: pointer;
+}
+#dropZone.drag-over { background: rgba(245,166,35,0.04); }
+#dropZone .drop-icon  { font-size: 56px; opacity: 0.2; }
+#dropZone .drop-title { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); opacity: 0.4; }
+#dropZone .drop-sub   { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+
+/* Canvas container */
+#canvasContainer {
+  display: none;
+  position: relative;
+  margin: 20px;
+  flex-shrink: 0;
+  cursor: crosshair;
+}
+
+/* PDF render canvas (bottom layer) */
+#pdfCanvas { display: block; }
+
+/* Annotation canvas (top layer, transparent) */
+#annotCanvas {
+  position: absolute;
+  top: 0; left: 0;
+  display: block;
+}
+
+/* Text input overlay */
+#textInput {
+  position: absolute;
+  display: none;
+  background: rgba(255,248,240,0.92);
+  border: 2px solid var(--gold);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  color: #000;
+  outline: none;
+  min-width: 80px;
+  min-height: 28px;
+  resize: both;
+  overflow: hidden;
+  z-index: 10;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 9px;
+}
+
+/* Annotation list */
+.annot-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.annot-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--text);
+}
+.annot-item-icon { font-size: 13px; flex-shrink: 0; }
+.annot-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.annot-item-del {
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; font-size: 14px; padding: 1px 4px; border-radius: 3px; line-height: 1;
+}
+.annot-item-del:hover { color: var(--accent); }
+
+/* Page nav */
+.page-nav { display: flex; align-items: center; gap: 6px; }
+.page-nav button {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); width: 26px; height: 26px;
+  border-radius: 5px; cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.13s;
+}
+.page-nav button:hover { border-color: var(--gold); background: rgba(245,166,35,0.1); }
+.page-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+#pageLabel { font-size: 11px; font-family: var(--font-mono); color: var(--gold); flex: 1; text-align: center; }
+
+/* Stamp presets */
+.stamp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.stamp-preset {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); padding: 6px 4px;
+  border-radius: 5px; font-size: 10px; font-weight: 700;
+  font-family: var(--font-ui); cursor: pointer; text-align: center;
+  transition: all 0.13s; letter-spacing: 0.04em;
+}
+.stamp-preset:hover { border-color: var(--gold); color: var(--gold); background: rgba(245,166,35,0.08); }
+.stamp-preset.active { border-color: var(--accent); color: var(--accent); background: rgba(232,84,26,0.1); }
+
+/* Watermark / page number dialogs */
+.field { margin-bottom: 8px; }
+.field label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+.field input, .field select, .field textarea {
+  width: 100%;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); padding: 5px 8px;
+  border-radius: 5px; font-size: 11px; font-family: var(--font-ui);
+  outline: none; transition: border-color 0.13s;
+}
+.field input:focus, .field select:focus { border-color: var(--gold); }
+.field input[type="color"] { height: 30px; padding: 2px 4px; cursor: pointer; }
+
+/* Position picker grid */
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  margin-bottom: 8px;
+}
+.pos-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); padding: 6px 2px;
+  border-radius: 4px; font-size: 10px; cursor: pointer;
+  text-align: center; transition: all 0.13s;
+  font-family: var(--font-ui);
+}
+.pos-btn:hover { border-color: var(--gold); color: var(--gold); }
+.pos-btn.active { border-color: var(--gold); background: rgba(245,166,35,0.12); color: var(--gold); }
+
+/* Info card */
+.info-card { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; }
+.info-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+.info-row .key { color: var(--muted); }
+.info-row .val { color: var(--gold); font-family: var(--font-mono); }
+
+/* Progress */
+.progress-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; height: 5px; }
+.progress-bar  { height: 100%; background: var(--gold); border-radius: 3px; transition: width 0.3s; }
+
+/* Spinner */
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid rgba(245,166,35,0.2); border-top-color: var(--gold);
+  border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Status bar */
+.status-bar {
+  height: 26px; background: var(--panel); border-top: 1px solid var(--border);
+  padding: 0 14px; display: flex; align-items: center; gap: 12px;
+  font-size: 11px; color: var(--muted); flex-shrink: 0;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.green { background: var(--success); }
+.dot.yellow { background: var(--gold); }
+
+/* Toast */
+#toast-container {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+  z-index: 300; display: flex; flex-direction: column; gap: 5px; align-items: center; pointer-events: none;
+}
+.toast {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 16px; font-size: 12px; color: var(--text);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5); animation: toast-in 0.2s ease; white-space: nowrap;
+}
+.toast.success { border-color: var(--success); color: var(--success); }
+.toast.error   { border-color: var(--accent);  color: var(--accent); }
+@keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+/* Colour swatches */
+.swatches { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.swatch {
+  width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.13s; flex-shrink: 0;
+}
+.swatch:hover, .swatch.active { border-color: var(--cream); }
+
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.w-full { width: 100%; justify-content: center; }
+.text-muted { color: var(--muted); }
+.text-sm { font-size: 11px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ═══ SITE HEADER ════════════════════════════════════════════ -->
+<header class="site-header" id="site-header"></header>
+<script src="../assets/js/nav.js"></script>
+
+<!-- ═══ TOOL TOOLBAR ══════════════════════════════════════════════ -->
+<div class="content-toolbar">
+
+  <!-- Drawing tools -->
+  <div class="tool-group">
+    <button class="tool-btn active" data-tool="text"      title="Place text">✎ Text</button>
+    <button class="tool-btn"        data-tool="draw"      title="Freehand draw">✏ Draw</button>
+    <button class="tool-btn"        data-tool="highlight" title="Highlight">▬ Highlight</button>
+    <button class="tool-btn"        data-tool="arrow"     title="Arrow">↗ Arrow</button>
+    <button class="tool-btn"        data-tool="rect"      title="Rectangle">▭ Rect</button>
+    <button class="tool-btn"        data-tool="ellipse"   title="Ellipse">◯ Ellipse</button>
+    <button class="tool-btn"        data-tool="stamp"     title="Stamp">⬡ Stamp</button>
+  </div>
+
+  <span class="tool-sep"></span>
+
+  <!-- Colour -->
+  <div class="colour-btn" title="Colour">
+    <div class="colour-preview" id="colourPreview" style="background:#E8541A"></div>
+    <input type="color" id="colourPicker" value="#E8541A">
+  </div>
+
+  <!-- Swatches -->
+  <div style="display:flex;gap:3px">
+    <div class="swatch active" style="background:#E8541A" data-colour="#E8541A"></div>
+    <div class="swatch" style="background:#F5A623" data-colour="#F5A623"></div>
+    <div class="swatch" style="background:#FFF8F0" data-colour="#FFF8F0"></div>
+    <div class="swatch" style="background:#4CAF50" data-colour="#4CAF50"></div>
+    <div class="swatch" style="background:#2196F3" data-colour="#2196F3"></div>
+    <div class="swatch" style="background:#9C27B0" data-colour="#9C27B0"></div>
+    <div class="swatch" style="background:#000000" data-colour="#000000"></div>
+  </div>
+
+  <span class="tool-sep"></span>
+
+  <!-- Size -->
+  <div class="size-wrap">
+    <span>Size</span>
+    <input type="range" id="sizeSlider" min="1" max="60" value="18">
+    <span id="sizeLabel">18</span>
+  </div>
+
+  <span class="tool-sep"></span>
+
+  <!-- Opacity -->
+  <div class="opacity-wrap">
+    <span>Opacity</span>
+    <input type="range" id="opacitySlider" min="10" max="100" value="100">
+    <span id="opacityLabel">100%</span>
+  </div>
+
+  <span class="tool-sep"></span>
+
+  <!-- Actions -->
+  <button class="tool-btn" id="undoBtn" title="Undo" disabled>↩ Undo</button>
+  <button class="tool-btn" id="redoBtn" title="Redo" disabled>↪ Redo</button>
+  <button class="tool-btn" id="clearPageBtn" title="Clear all annotations on this page" disabled>✕ Clear page</button>
+
+  <span style="flex:1"></span>
+
+  <button class="tool-btn" id="loadNewBtn" style="display:none">📂 Load PDF</button>
+  <button class="hdr-btn" id="applyWmBtn" style="display:none">≋ Apply Watermark</button>
+  <button class="hdr-btn" id="applyPnBtn" style="display:none"># Apply Page Numbers</button>
+  <button class="hdr-btn primary" id="saveBtn" disabled>
+    <span class="spinner" id="saveBtnSpinner" style="display:none"></span>
+    ⬇ Save PDF
+  </button>
+
+</div>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════════════ -->
+<div class="content-main">
+
+  <!-- Work area -->
+  <main class="work-area" id="workArea">
+    <input type="file" id="fileInput" accept=".pdf,application/pdf" style="display:none">
+
+    <div id="dropZone">
+      <span class="drop-icon">✏️</span>
+      <p class="drop-title">Drop a PDF here</p>
+      <p class="drop-sub">Add text, drawings, highlights, shapes, stamps<br>watermarks and page numbers</p>
+    </div>
+
+    <div id="canvasContainer">
+      <canvas id="pdfCanvas"></canvas>
+      <canvas id="annotCanvas"></canvas>
+      <textarea id="textInput" spellcheck="false"></textarea>
+    </div>
+  </main>
+
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Page navigation -->
+    <div class="sidebar-section" id="pageNavSection" style="display:none">
+      <div class="sidebar-title">Page</div>
+      <div class="page-nav">
+        <button id="prevPage">‹</button>
+        <span id="pageLabel">1 / 1</span>
+        <button id="nextPage">›</button>
+      </div>
+    </div>
+
+    <!-- Stamp presets (shown when stamp tool active) -->
+    <div class="sidebar-section" id="stampSection" style="display:none">
+      <div class="sidebar-title">Stamp</div>
+      <div class="stamp-grid">
+        <button class="stamp-preset active" data-stamp="DRAFT">DRAFT</button>
+        <button class="stamp-preset" data-stamp="APPROVED">APPROVED</button>
+        <button class="stamp-preset" data-stamp="REJECTED">REJECTED</button>
+        <button class="stamp-preset" data-stamp="CONFIDENTIAL">CONFIDENTIAL</button>
+        <button class="stamp-preset" data-stamp="FOR REVIEW">FOR REVIEW</button>
+        <button class="stamp-preset" data-stamp="FINAL">FINAL</button>
+        <button class="stamp-preset" data-stamp="VOID">VOID</button>
+        <button class="stamp-preset" data-stamp="COPY">COPY</button>
+      </div>
+      <div class="field mt-8">
+        <label>Custom stamp text</label>
+        <input type="text" id="customStamp" placeholder="Type custom text…">
+      </div>
+    </div>
+
+    <!-- Watermark settings -->
+    <div class="sidebar-section" id="watermarkSection">
+      <div class="sidebar-title">Watermark</div>
+      <div class="field">
+        <label>Text</label>
+        <input type="text" id="wmText" value="CONFIDENTIAL">
+      </div>
+      <div class="field">
+        <label>Colour</label>
+        <input type="color" id="wmColour" value="#E8541A">
+      </div>
+      <div class="field">
+        <label>Opacity</label>
+        <input type="range" id="wmOpacity" min="5" max="80" value="20" style="width:100%;accent-color:var(--gold)">
+        <span id="wmOpacityLabel" class="text-muted text-sm">20%</span>
+      </div>
+      <div class="field">
+        <label>Font size</label>
+        <input type="range" id="wmSize" min="20" max="120" value="60" style="width:100%;accent-color:var(--gold)">
+        <span id="wmSizeLabel" class="text-muted text-sm">60pt</span>
+      </div>
+      <div class="field">
+        <label>Rotation</label>
+        <input type="range" id="wmRotation" min="-90" max="90" value="-35" style="width:100%;accent-color:var(--gold)">
+        <span id="wmRotLabel" class="text-muted text-sm">-35°</span>
+      </div>
+      <div class="field">
+        <label>Apply to</label>
+        <select id="wmPages">
+          <option value="all">All pages</option>
+          <option value="current">Current page only</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Page numbers settings -->
+    <div class="sidebar-section" id="pageNumSection">
+      <div class="sidebar-title">Page Numbers</div>
+      <div class="field">
+        <label>Position</label>
+        <div class="pos-grid">
+          <button class="pos-btn" data-pos="top-left">↖ Top L</button>
+          <button class="pos-btn" data-pos="top-center">↑ Top C</button>
+          <button class="pos-btn" data-pos="top-right">↗ Top R</button>
+          <button class="pos-btn" data-pos="bottom-left">↙ Bot L</button>
+          <button class="pos-btn active" data-pos="bottom-center">↓ Bot C</button>
+          <button class="pos-btn" data-pos="bottom-right">↘ Bot R</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Format</label>
+        <select id="pnFormat">
+          <option value="n">1, 2, 3…</option>
+          <option value="of">1 of 10, 2 of 10…</option>
+          <option value="dash">— 1 —, — 2 —…</option>
+          <option value="pg">Page 1, Page 2…</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Start from page</label>
+        <input type="number" id="pnStartPage" value="1" min="1" style="font-family:var(--font-mono);font-size:11px">
+      </div>
+      <div class="field">
+        <label>Start number</label>
+        <input type="number" id="pnStartNum" value="1" min="0" style="font-family:var(--font-mono);font-size:11px">
+      </div>
+      <div class="field">
+        <label>Font size (pts)</label>
+        <input type="number" id="pnFontSize" value="10" min="6" max="24" style="font-family:var(--font-mono);font-size:11px">
+      </div>
+      <div class="field">
+        <label>Colour</label>
+        <input type="color" id="pnColour" value="#1A0A00">
+      </div>
+    </div>
+
+    <!-- Annotation list -->
+    <div class="sidebar-section" id="annotListSection" style="display:none">
+      <div class="sidebar-title">Annotations <span id="annotCountBadge" style="background:var(--accent);color:#fff;border-radius:8px;font-size:10px;font-weight:700;padding:1px 7px;margin-left:4px">0</span></div>
+      <div class="annot-list" id="annotList"></div>
+    </div>
+
+    <!-- File info -->
+    <div class="sidebar-section" id="fileInfoSection" style="display:none">
+      <div class="sidebar-title">File Info</div>
+      <div class="info-card">
+        <div class="info-row"><span class="key">File</span><span class="val" id="infoName" style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span></div>
+        <div class="info-row"><span class="key">Pages</span><span class="val" id="infoPages">—</span></div>
+        <div class="info-row"><span class="key">Size</span><span class="val" id="infoSize">—</span></div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="sidebar-section" id="progressSection" style="display:none">
+      <div class="sidebar-title">Saving…</div>
+      <div class="progress-wrap mt-8">
+        <div class="progress-bar" id="progressBar" style="width:0%"></div>
+      </div>
+      <p class="text-sm text-muted mt-8" id="progressLabel"></p>
+    </div>
+
+  </aside>
+</div>
+
+<!-- ═══ STATUS BAR ════════════════════════════════════════════════ -->
+<div class="status-bar">
+  <span class="dot" id="statusDot"></span>
+  <span id="statusText">No file loaded — drop a PDF to begin</span>
+  <span style="flex:1"></span>
+  <span id="statusHint" class="text-muted"></span>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SCRIPTS
+═══════════════════════════════════════════════════════════════ -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+'use strict';
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+function isSubscriber() { return true; }
+
+/* ══════════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════════ */
+let pdfJsDoc    = null;
+let pdfLibDoc   = null;
+let srcFile     = null;
+let totalPages  = 0;
+let currentPage = 1;
+let currentTool = 'text';
+let currentColour = '#E8541A';
+let currentSize   = 18;
+let currentOpacity = 1.0;
+let currentStamp  = 'DRAFT';
+let pnPosition    = 'bottom-center';
+
+// Annotations per page: { pageNum: [{type, data}] }
+let annotations = {};
+
+// Drawing state
+let isDrawing   = false;
+let drawPath    = [];
+let startX = 0, startY = 0;
+let shapePreview = null;
+
+// Undo/redo stacks per page
+let undoStack   = {};
+let redoStack   = {};
+
+/* ══════════════════════════════════════════════════════════════
+   DOM REFS
+══════════════════════════════════════════════════════════════ */
+const dropZone       = document.getElementById('dropZone');
+const fileInput      = document.getElementById('fileInput');
+const workArea       = document.getElementById('workArea');
+const canvasContainer= document.getElementById('canvasContainer');
+const pdfCanvas      = document.getElementById('pdfCanvas');
+const annotCanvas    = document.getElementById('annotCanvas');
+const textInput      = document.getElementById('textInput');
+const saveBtn        = document.getElementById('saveBtn');
+const saveBtnSpinner = document.getElementById('saveBtnSpinner');
+const loadNewBtn     = document.getElementById('loadNewBtn');
+const undoBtn        = document.getElementById('undoBtn');
+const redoBtn        = document.getElementById('redoBtn');
+const clearPageBtn   = document.getElementById('clearPageBtn');
+const colourPicker   = document.getElementById('colourPicker');
+const colourPreview  = document.getElementById('colourPreview');
+const sizeSlider     = document.getElementById('sizeSlider');
+const sizeLabel      = document.getElementById('sizeLabel');
+const opacitySlider  = document.getElementById('opacitySlider');
+const opacityLabel   = document.getElementById('opacityLabel');
+const statusDot      = document.getElementById('statusDot');
+const statusText     = document.getElementById('statusText');
+const statusHint     = document.getElementById('statusHint');
+const progressSection= document.getElementById('progressSection');
+const progressBar    = document.getElementById('progressBar');
+const progressLabel  = document.getElementById('progressLabel');
+const ctx            = annotCanvas.getContext('2d');
+
+/* ══════════════════════════════════════════════════════════════
+   FILE LOADING
+══════════════════════════════════════════════════════════════ */
+dropZone.addEventListener('click', () => fileInput.click());
+loadNewBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); fileInput.value=''; });
+
+['dragenter','dragover'].forEach(ev => workArea.addEventListener(ev, e => { e.preventDefault(); if(!pdfJsDoc) dropZone.classList.add('drag-over'); }));
+['dragleave','drop'].forEach(ev => workArea.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); }));
+workArea.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f && (f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'))) loadFile(f);
+  else toast('Please drop a PDF', 'error');
+});
+
+async function loadFile(file) {
+  srcFile = file;
+  setStatus('yellow','Loading…','');
+  try {
+    const buf = await file.arrayBuffer();
+    pdfJsDoc  = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    pdfLibDoc = await PDFLib.PDFDocument.load(buf.slice(0), { ignoreEncryption: true });
+    totalPages = pdfJsDoc.numPages;
+    currentPage = 1;
+    annotations = {};
+    undoStack   = {};
+    redoStack   = {};
+
+    document.getElementById('infoName').textContent  = file.name;
+    document.getElementById('infoPages').textContent = totalPages;
+    document.getElementById('infoSize').textContent  = fmtBytes(file.size);
+    document.getElementById('fileInfoSection').style.display = '';
+    document.getElementById('pageNavSection').style.display  = '';
+    document.getElementById('annotListSection').style.display = '';
+
+    dropZone.style.display = 'none';
+    canvasContainer.style.display = 'block';
+    loadNewBtn.style.display = '';
+    saveBtn.disabled = false;
+    clearPageBtn.disabled = false;
+
+    await renderPage();
+    setStatus('green', `${totalPages} pages — ${file.name}`, toolHint());
+  } catch(err) {
+    console.error(err);
+    toast('Could not read PDF: ' + err.message, 'error');
+    setStatus('red','Load failed','');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDER PAGE
+══════════════════════════════════════════════════════════════ */
+async function renderPage() {
+  const page  = await pdfJsDoc.getPage(currentPage);
+  const scale = Math.min(1.5, (workArea.clientWidth - 60) / page.getViewport({scale:1}).width);
+  const vp    = page.getViewport({ scale });
+
+  pdfCanvas.width  = vp.width;
+  pdfCanvas.height = vp.height;
+  annotCanvas.width  = vp.width;
+  annotCanvas.height = vp.height;
+
+  await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport: vp }).promise;
+  redrawAnnotations();
+  updatePageLabel();
+  updateAnnotList();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAGE NAV
+══════════════════════════════════════════════════════════════ */
+document.getElementById('prevPage').addEventListener('click', async () => {
+  if (currentPage > 1) { commitTextInput(); currentPage--; await renderPage(); }
+});
+document.getElementById('nextPage').addEventListener('click', async () => {
+  if (currentPage < totalPages) { commitTextInput(); currentPage++; await renderPage(); }
+});
+
+function updatePageLabel() {
+  document.getElementById('pageLabel').textContent = `${currentPage} / ${totalPages}`;
+  document.getElementById('prevPage').disabled = currentPage <= 1;
+  document.getElementById('nextPage').disabled = currentPage >= totalPages;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TOOL SELECTION
+══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    commitTextInput();
+    document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTool = btn.dataset.tool;
+    document.getElementById('stampSection').style.display    = currentTool === 'stamp' ? '' : 'none';
+    document.getElementById('applyWmBtn').style.display      = 'none';
+    document.getElementById('applyPnBtn').style.display      = 'none';
+    annotCanvas.style.cursor = currentTool === 'text' ? 'text' : 'crosshair';
+    setStatus('green', document.getElementById('statusText').textContent, toolHint());
+  });
+});
+
+function toolHint() {
+  const hints = {
+    text: 'Click on the page to place text',
+    draw: 'Click and drag to draw freehand',
+    highlight: 'Click and drag to highlight',
+    arrow: 'Click and drag to draw an arrow',
+    rect: 'Click and drag to draw a rectangle',
+    ellipse: 'Click and drag to draw an ellipse',
+    stamp: 'Click on the page to stamp',
+  };
+  return hints[currentTool] || '';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COLOUR & SIZE
+══════════════════════════════════════════════════════════════ */
+colourPicker.addEventListener('input', e => setColour(e.target.value));
+document.querySelectorAll('.swatch').forEach(s => {
+  s.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(sw => sw.classList.remove('active'));
+    s.classList.add('active');
+    setColour(s.dataset.colour);
+  });
+});
+function setColour(c) {
+  currentColour = c;
+  colourPreview.style.background = c;
+  colourPicker.value = c;
+}
+
+sizeSlider.addEventListener('input', e => {
+  currentSize = parseInt(e.target.value);
+  sizeLabel.textContent = currentSize;
+});
+opacitySlider.addEventListener('input', e => {
+  currentOpacity = parseInt(e.target.value) / 100;
+  opacityLabel.textContent = e.target.value + '%';
+});
+
+/* ══════════════════════════════════════════════════════════════
+   STAMP PRESETS
+══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.stamp-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.stamp-preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentStamp = btn.dataset.stamp;
+    document.getElementById('customStamp').value = '';
+  });
+});
+document.getElementById('customStamp').addEventListener('input', e => {
+  if (e.target.value.trim()) {
+    document.querySelectorAll('.stamp-preset').forEach(b => b.classList.remove('active'));
+    currentStamp = e.target.value.trim().toUpperCase();
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   CANVAS DRAWING
+══════════════════════════════════════════════════════════════ */
+annotCanvas.addEventListener('mousedown', onMouseDown);
+annotCanvas.addEventListener('mousemove', onMouseMove);
+annotCanvas.addEventListener('mouseup',   onMouseUp);
+
+function getPos(e) {
+  const rect = annotCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function onMouseDown(e) {
+  if (!pdfJsDoc) return;
+  const pos = getPos(e);
+
+  if (currentTool === 'text') {
+    showTextInput(pos.x, pos.y);
+    return;
+  }
+  if (currentTool === 'stamp') {
+    addAnnotation({ type: 'stamp', x: pos.x, y: pos.y, text: currentStamp, size: currentSize * 2, colour: currentColour, opacity: currentOpacity });
+    return;
+  }
+
+  isDrawing = true;
+  startX = pos.x; startY = pos.y;
+  drawPath = [{ x: pos.x, y: pos.y }];
+}
+
+function onMouseMove(e) {
+  if (!isDrawing) return;
+  const pos = getPos(e);
+
+  if (currentTool === 'draw' || currentTool === 'highlight') {
+    drawPath.push({ x: pos.x, y: pos.y });
+    redrawAnnotations();
+    // Draw current stroke preview
+    ctx.save();
+    ctx.globalAlpha = currentOpacity * (currentTool === 'highlight' ? 0.4 : 1);
+    ctx.strokeStyle = currentColour;
+    ctx.lineWidth   = currentTool === 'highlight' ? currentSize * 1.5 : currentSize * 0.3;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    drawPath.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+    ctx.restore();
+  } else {
+    // Shape preview
+    redrawAnnotations();
+    drawShape(ctx, currentTool, startX, startY, pos.x, pos.y, currentColour, currentSize * 0.3, currentOpacity, false);
+  }
+}
+
+function onMouseUp(e) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  const pos = getPos(e);
+
+  if (currentTool === 'draw' || currentTool === 'highlight') {
+    if (drawPath.length > 1) {
+      addAnnotation({ type: currentTool, path: [...drawPath], colour: currentColour, size: currentSize * 0.3, opacity: currentOpacity });
+    }
+  } else {
+    addAnnotation({ type: currentTool, x1: startX, y1: startY, x2: pos.x, y2: pos.y, colour: currentColour, size: currentSize * 0.3, opacity: currentOpacity });
+  }
+  drawPath = [];
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TEXT INPUT
+══════════════════════════════════════════════════════════════ */
+function showTextInput(x, y) {
+  textInput.style.left    = x + 'px';
+  textInput.style.top     = y + 'px';
+  textInput.style.display = 'block';
+  textInput.style.fontSize = currentSize + 'px';
+  textInput.style.color   = currentColour;
+  textInput.value = '';
+  textInput.focus();
+}
+
+function commitTextInput() {
+  if (textInput.style.display === 'none') return;
+  const val = textInput.value.trim();
+  if (val) {
+    addAnnotation({
+      type: 'text', text: val,
+      x: parseInt(textInput.style.left),
+      y: parseInt(textInput.style.top) + currentSize,
+      colour: currentColour, size: currentSize, opacity: currentOpacity
+    });
+  }
+  textInput.style.display = 'none';
+  textInput.value = '';
+}
+
+textInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { textInput.style.display = 'none'; textInput.value = ''; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitTextInput(); }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   ANNOTATION MANAGEMENT
+══════════════════════════════════════════════════════════════ */
+function addAnnotation(annot) {
+  if (!annotations[currentPage]) annotations[currentPage] = [];
+  if (!undoStack[currentPage]) undoStack[currentPage] = [];
+
+  undoStack[currentPage].push([...annotations[currentPage]]);
+  redoStack[currentPage] = [];
+
+  annotations[currentPage].push(annot);
+  redrawAnnotations();
+  updateAnnotList();
+  updateUndoRedo();
+}
+
+function redrawAnnotations() {
+  ctx.clearRect(0, 0, annotCanvas.width, annotCanvas.height);
+  const annots = annotations[currentPage] || [];
+  annots.forEach(a => drawAnnotation(ctx, a));
+}
+
+function drawAnnotation(c, a) {
+  c.save();
+  c.globalAlpha = a.opacity ?? 1;
+  switch(a.type) {
+    case 'text':
+      c.font = `${a.size}px ${getComputedStyle(document.body).fontFamily}`;
+      c.fillStyle = a.colour;
+      const lines = a.text.split('\n');
+      lines.forEach((line, i) => c.fillText(line, a.x, a.y + i * a.size * 1.2));
+      break;
+    case 'draw':
+      c.strokeStyle = a.colour; c.lineWidth = a.size;
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      c.beginPath();
+      a.path.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+      c.stroke();
+      break;
+    case 'highlight':
+      c.globalAlpha = (a.opacity ?? 1) * 0.4;
+      c.strokeStyle = a.colour; c.lineWidth = a.size * 1.5;
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      c.beginPath();
+      a.path.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+      c.stroke();
+      break;
+    case 'arrow':
+    case 'rect':
+    case 'ellipse':
+      drawShape(c, a.type, a.x1, a.y1, a.x2, a.y2, a.colour, a.size, a.opacity, true);
+      break;
+    case 'stamp':
+      drawStamp(c, a);
+      break;
+  }
+  c.restore();
+}
+
+function drawShape(c, type, x1, y1, x2, y2, colour, size, opacity, restore) {
+  c.save();
+  c.globalAlpha = opacity ?? 1;
+  c.strokeStyle = colour; c.lineWidth = size; c.lineCap = 'round';
+  if (type === 'arrow') {
+    c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    // Arrowhead
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const len = size * 5;
+    c.beginPath();
+    c.moveTo(x2, y2);
+    c.lineTo(x2 - len * Math.cos(angle - 0.4), y2 - len * Math.sin(angle - 0.4));
+    c.moveTo(x2, y2);
+    c.lineTo(x2 - len * Math.cos(angle + 0.4), y2 - len * Math.sin(angle + 0.4));
+    c.stroke();
+  } else if (type === 'rect') {
+    c.strokeRect(x1, y1, x2 - x1, y2 - y1);
+  } else if (type === 'ellipse') {
+    c.beginPath();
+    c.ellipse((x1+x2)/2, (y1+y2)/2, Math.abs(x2-x1)/2, Math.abs(y2-y1)/2, 0, 0, Math.PI * 2);
+    c.stroke();
+  }
+  if (restore) c.restore();
+}
+
+function drawStamp(c, a) {
+  const text = a.text;
+  const size = a.size || 48;
+  c.font = `900 ${size}px 'Inter', sans-serif`;
+  c.globalAlpha = a.opacity ?? 0.7;
+  c.strokeStyle = a.colour;
+  c.lineWidth = size * 0.06;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  // Border
+  const w = c.measureText(text).width + size * 0.5;
+  const h = size * 1.3;
+  c.strokeRect(a.x - w/2, a.y - h/2, w, h);
+  // Text
+  c.fillStyle = a.colour;
+  c.fillText(text, a.x, a.y);
+  c.textAlign = 'start';
+  c.textBaseline = 'alphabetic';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UNDO / REDO
+══════════════════════════════════════════════════════════════ */
+undoBtn.addEventListener('click', () => {
+  const stack = undoStack[currentPage];
+  if (!stack || !stack.length) return;
+  if (!redoStack[currentPage]) redoStack[currentPage] = [];
+  redoStack[currentPage].push([...(annotations[currentPage]||[])]);
+  annotations[currentPage] = stack.pop();
+  redrawAnnotations(); updateAnnotList(); updateUndoRedo();
+});
+redoBtn.addEventListener('click', () => {
+  const stack = redoStack[currentPage];
+  if (!stack || !stack.length) return;
+  if (!undoStack[currentPage]) undoStack[currentPage] = [];
+  undoStack[currentPage].push([...(annotations[currentPage]||[])]);
+  annotations[currentPage] = stack.pop();
+  redrawAnnotations(); updateAnnotList(); updateUndoRedo();
+});
+clearPageBtn.addEventListener('click', () => {
+  if (!annotations[currentPage]?.length) return;
+  if (!undoStack[currentPage]) undoStack[currentPage] = [];
+  undoStack[currentPage].push([...annotations[currentPage]]);
+  annotations[currentPage] = [];
+  redrawAnnotations(); updateAnnotList(); updateUndoRedo();
+  toast('Page cleared', 'success');
+});
+function updateUndoRedo() {
+  undoBtn.disabled = !(undoStack[currentPage]?.length);
+  redoBtn.disabled = !(redoStack[currentPage]?.length);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ANNOTATION LIST (sidebar)
+══════════════════════════════════════════════════════════════ */
+function updateAnnotList() {
+  const list   = document.getElementById('annotList');
+  const badge  = document.getElementById('annotCountBadge');
+  const annots = annotations[currentPage] || [];
+  badge.textContent = annots.length;
+  list.innerHTML = '';
+  if (!annots.length) {
+    list.innerHTML = '<div class="text-sm text-muted" style="padding:4px">No annotations on this page</div>';
+    return;
+  }
+  [...annots].reverse().forEach((a, ri) => {
+    const i = annots.length - 1 - ri;
+    const icons = { text:'✎', draw:'✏', highlight:'▬', arrow:'↗', rect:'▭', ellipse:'◯', stamp:'⬡' };
+    const labels = { text: a.text?.split('\n')[0]||'Text', draw:'Drawing', highlight:'Highlight', arrow:'Arrow', rect:'Rectangle', ellipse:'Ellipse', stamp: a.text };
+    const el = document.createElement('div');
+    el.className = 'annot-item';
+    el.innerHTML = `
+      <span class="annot-item-icon">${icons[a.type]||'•'}</span>
+      <span class="annot-item-label" style="color:${a.colour}">${labels[a.type]||a.type}</span>
+      <button class="annot-item-del" data-idx="${i}" title="Delete">✕</button>
+    `;
+    el.querySelector('.annot-item-del').addEventListener('click', e => {
+      const idx = parseInt(e.currentTarget.dataset.idx);
+      if (!undoStack[currentPage]) undoStack[currentPage] = [];
+      undoStack[currentPage].push([...annotations[currentPage]]);
+      annotations[currentPage].splice(idx, 1);
+      redrawAnnotations(); updateAnnotList(); updateUndoRedo();
+    });
+    list.appendChild(el);
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WATERMARK
+══════════════════════════════════════════════════════════════ */
+document.getElementById('wmOpacity').addEventListener('input', e => document.getElementById('wmOpacityLabel').textContent = e.target.value + '%');
+document.getElementById('wmSize').addEventListener('input', e => document.getElementById('wmSizeLabel').textContent = e.target.value + 'pt');
+document.getElementById('wmRotation').addEventListener('input', e => document.getElementById('wmRotLabel').textContent = e.target.value + '°');
+
+document.getElementById('applyWmBtn').addEventListener('click', applyWatermark);
+async function applyWatermark() {
+  if (!pdfLibDoc) return;
+  const text     = document.getElementById('wmText').value.trim() || 'WATERMARK';
+  const colour   = document.getElementById('wmColour').value;
+  const opacity  = parseInt(document.getElementById('wmOpacity').value) / 100;
+  const fontSize = parseInt(document.getElementById('wmSize').value);
+  const rotation = parseInt(document.getElementById('wmRotation').value);
+  const pages    = document.getElementById('wmPages').value === 'all'
+    ? pdfLibDoc.getPages()
+    : [pdfLibDoc.getPages()[currentPage - 1]];
+
+  const rgb = hexToRgb(colour);
+
+  pages.forEach(page => {
+    const { width, height } = page.getSize();
+    page.drawText(text, {
+      x: width / 2 - (text.length * fontSize * 0.3),
+      y: height / 2,
+      size: fontSize,
+      color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255),
+      opacity,
+      rotate: PDFLib.degrees(rotation),
+    });
+  });
+  toast(`Watermark applied to ${pages.length} page${pages.length!==1?'s':''}`, 'success');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PAGE NUMBERS
+══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.pos-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    pnPosition = btn.dataset.pos;
+  });
+});
+
+document.getElementById('applyPnBtn').addEventListener('click', applyPageNumbers);
+async function applyPageNumbers() {
+  if (!pdfLibDoc) return;
+  const format    = document.getElementById('pnFormat').value;
+  const startPage = Math.max(1, parseInt(document.getElementById('pnStartPage').value) || 1);
+  const startNum  = parseInt(document.getElementById('pnStartNum').value) || 1;
+  const fontSize  = parseInt(document.getElementById('pnFontSize').value) || 10;
+  const colour    = document.getElementById('pnColour').value;
+  const rgb       = hexToRgb(colour);
+  const pages     = pdfLibDoc.getPages();
+  const total     = pages.length;
+  const margin    = 20;
+
+  pages.forEach((page, i) => {
+    if (i + 1 < startPage) return;
+    const n = startNum + (i + 1 - startPage);
+    let label = '';
+    if (format === 'n')    label = String(n);
+    if (format === 'of')   label = `${n} of ${total}`;
+    if (format === 'dash') label = `— ${n} —`;
+    if (format === 'pg')   label = `Page ${n}`;
+
+    const { width, height } = page.getSize();
+    const parts = pnPosition.split('-');
+    const vert  = parts[0]; const horiz = parts[1];
+    const x = horiz === 'left' ? margin : horiz === 'right' ? width - margin - label.length * fontSize * 0.5 : width/2 - label.length * fontSize * 0.25;
+    const y = vert === 'top' ? height - margin : margin;
+
+    page.drawText(label, {
+      x, y, size: fontSize,
+      color: PDFLib.rgb(rgb.r/255, rgb.g/255, rgb.b/255),
+    });
+  });
+  toast(`Page numbers added from page ${startPage}`, 'success');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SAVE PDF
+══════════════════════════════════════════════════════════════ */
+saveBtn.addEventListener('click', savePDF);
+async function savePDF() {
+  if (!pdfLibDoc) return;
+  commitTextInput();
+  saveBtn.disabled = true;
+  saveBtnSpinner.style.display = '';
+  progressSection.style.display = '';
+  setProgress(0, 'Preparing…');
+
+  try {
+    // Burn canvas annotations onto each page
+    const pages = pdfLibDoc.getPages();
+
+    for (let p = 1; p <= totalPages; p++) {
+      const annots = annotations[p];
+      if (!annots || !annots.length) continue;
+
+      setProgress(Math.round((p/totalPages)*80), `Rendering page ${p}…`);
+
+      // Render annotations to an offscreen canvas at page size
+      const pdfPage  = pages[p - 1];
+      const { width, height } = pdfPage.getSize();
+
+      // Render the annotation layer at the same size as the PDF page
+      const offCanvas = document.createElement('canvas');
+      const pdfJsPage = await pdfJsDoc.getPage(p);
+      const vp = pdfJsPage.getViewport({ scale: 1 });
+      const scaleX = width  / vp.width;
+      const scaleY = height / vp.height;
+
+      offCanvas.width  = vp.width;
+      offCanvas.height = vp.height;
+      const offCtx = offCanvas.getContext('2d');
+      annots.forEach(a => {
+        const scaled = scaleAnnotation(a, 1);
+        drawAnnotation(offCtx, scaled);
+      });
+
+      // Embed as image on PDF page
+      const imgData = offCanvas.toDataURL('image/png');
+      const imgBytes = await fetch(imgData).then(r => r.arrayBuffer());
+      const pngImage = await pdfLibDoc.embedPng(imgBytes);
+      pdfPage.drawImage(pngImage, { x:0, y:0, width, height });
+    }
+
+    setProgress(90, 'Saving…');
+    const bytes = await pdfLibDoc.save();
+    const name  = srcFile ? srcFile.name.replace(/\.pdf$/i,'') + '_annotated.pdf' : 'annotated.pdf';
+    downloadBlob(new Blob([bytes], {type:'application/pdf'}), name);
+    setProgress(100, 'Done!');
+    toast('PDF saved', 'success');
+  } catch(err) {
+    console.error(err);
+    toast('Save failed: ' + err.message, 'error');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtnSpinner.style.display = 'none';
+    setTimeout(() => progressSection.style.display = 'none', 2000);
+  }
+}
+
+function scaleAnnotation(a, scale) {
+  // Annotations are stored in canvas coords — pass through at scale 1
+  return a;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WATERMARK / PAGE NUMBERS BUTTON VISIBILITY
+══════════════════════════════════════════════════════════════ */
+// Show Apply Watermark and Apply Page Numbers buttons always when PDF loaded
+function showApplyButtons() {
+  document.getElementById('applyWmBtn').style.display = pdfLibDoc ? '' : 'none';
+  document.getElementById('applyPnBtn').style.display = pdfLibDoc ? '' : 'none';
+}
+// Wire into loadFile
+const origLoadFile = loadFile;
+
+/* ══════════════════════════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════════════════════════ */
+function setProgress(pct, label) {
+  progressBar.style.width = pct + '%';
+  progressLabel.textContent = label;
+}
+function setStatus(colour, text, hint) {
+  statusDot.className = 'dot' + (colour ? ' '+colour : '');
+  statusText.textContent = text;
+  if (hint !== undefined) statusHint.textContent = hint;
+}
+function fmtBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return { r, g, b };
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════════════ */
+// Show watermark & page number apply buttons after load
+const _origRenderPage = renderPage;
+async function renderPage() {
+  await _origRenderPage();
+  showApplyButtons();
+}
+
+setStatus('', 'No file loaded — drop a PDF to begin', '');
+</script>
+</body>
+</html>

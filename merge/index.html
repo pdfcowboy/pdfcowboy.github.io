@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDFMerge — PDF Suite</title>
+<link rel="stylesheet" href="../assets/css/style.css">
+<style>
+/* ── PDFMerge-specific styles ── */
+.work-area {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 24px;
+  gap: 0;
+  overflow-y: auto;
+}
+
+/* Drop zone (prominent, centre of work area when empty) */
+#dropZone {
+  width: 100%;
+  max-width: 660px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+#dropZone:hover,
+#dropZone.drag-over {
+  border-color: var(--accent2);
+  background: rgba(83,216,251,0.05);
+}
+#dropZone .drop-icon  { font-size: 48px; opacity: 0.3; display: block; }
+#dropZone .drop-title { font-size: 18px; font-weight: 600; color: var(--text); opacity: 0.5; margin: 10px 0 6px; }
+#dropZone .drop-sub   { font-size: 12px; color: var(--muted); }
+
+/* File list */
+#fileList {
+  width: 100%;
+  max-width: 660px;
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Individual file row */
+.file-row {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: grab;
+  transition: border-color 0.13s, background 0.13s;
+  user-select: none;
+}
+.file-row:active { cursor: grabbing; }
+.file-row.drag-src { opacity: 0.4; }
+.file-row.drag-over-top    { border-top: 2px solid var(--accent2); }
+.file-row.drag-over-bottom { border-bottom: 2px solid var(--accent2); }
+
+.file-drag-handle {
+  color: var(--border);
+  font-size: 16px;
+  cursor: grab;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.file-drag-handle:active { cursor: grabbing; }
+
+.file-thumb-wrap {
+  width: 32px;
+  height: 42px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--muted);
+}
+.file-thumb-wrap canvas,
+.file-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.file-info { flex: 1; min-width: 0; }
+.file-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.file-order {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.file-remove {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.file-remove:hover { color: var(--accent); background: rgba(233,69,96,0.1); }
+
+/* Add more strip below list */
+#addMoreBtn {
+  width: 100%;
+  max-width: 660px;
+  margin-top: 8px;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  padding: 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: border-color 0.13s, color 0.13s;
+}
+#addMoreBtn:hover { border-color: var(--accent2); color: var(--accent2); }
+#addMoreBtn.visible { display: flex; }
+
+/* Sidebar specifics */
+.merge-summary {
+  font-size: 11px;
+}
+
+.page-range-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  margin: 2px;
+}
+
+#mergeProgress {
+  margin-top: 10px;
+  display: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent2);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Output name field */
+#outputName {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ════════════════════════════════════════════════════ -->
+<header class="suite-header">
+  <a class="suite-logo" href="../index.html"><em>PDF</em>Suite</a>
+  <span class="tool-badge">Merge</span>
+  <span class="header-sep"></span>
+
+  <!-- Tool nav -->
+  <nav class="suite-nav">
+    <span class="current">Merge</span>
+    <a href="../split/index.html">Split</a>
+    <a href="../annotate/index.html">Annotate</a>
+    <a href="../sign/index.html">Sign</a>
+    <a href="../convert/index.html">Convert</a>
+  </nav>
+
+  <div class="spacer"></div>
+
+  <button class="hdr-btn" id="clearAllBtn" title="Remove all files" style="display:none">
+    🗑 Clear all
+  </button>
+  <button class="hdr-btn primary" id="mergeBtn" disabled>
+    <span id="mergeBtnSpinner" class="spinner" style="display:none"></span>
+    ⬇ Merge &amp; Download
+  </button>
+</header>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════════════ -->
+<div class="suite-main">
+
+  <!-- Working area -->
+  <main class="work-area" id="workArea">
+
+    <!-- Empty drop zone -->
+    <div id="dropZone">
+      <span class="drop-icon">📄</span>
+      <p class="drop-title">Drop PDFs here</p>
+      <p class="drop-sub">Or click to browse — add as many files as you like, then drag to reorder</p>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,application/pdf" multiple style="display:none">
+
+    <!-- File list (populated by JS) -->
+    <div id="fileList"></div>
+
+    <!-- Add more button (appears once list has items) -->
+    <button class="btn" id="addMoreBtn">＋ Add more PDFs</button>
+
+  </main>
+
+  <!-- ── SIDEBAR ──────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Summary -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">Merge Summary</div>
+      <div class="info-card merge-summary" id="summaryCard">
+        <div class="info-row"><span class="key">Files</span><span class="val accent" id="sumFiles">0</span></div>
+        <div class="info-row"><span class="key">Total pages</span><span class="val accent" id="sumPages">0</span></div>
+        <div class="info-row"><span class="key">Est. size</span><span class="val" id="sumSize">—</span></div>
+      </div>
+    </div>
+
+    <!-- Output options -->
+    <div class="sidebar-section">
+      <div class="sidebar-title">Output</div>
+      <div class="field">
+        <label for="outputName">File name</label>
+        <input type="text" id="outputName" value="merged.pdf" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="pageOrder">Page order</label>
+        <select id="pageOrder">
+          <option value="normal">As listed (top → bottom)</option>
+          <option value="reverse">Reverse file order</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Free tier notice -->
+    <div class="sidebar-section" id="tierSection">
+      <div class="tier-notice" id="tierNotice">
+        <span>⚠</span>
+        <span>Free tier: <strong>first 8 pages</strong> per file will be merged. <a href="#">Upgrade</a> for unlimited.</span>
+      </div>
+    </div>
+
+    <!-- Per-file page ranges (advanced) -->
+    <div class="sidebar-section" id="rangesSection" style="display:none">
+      <div class="sidebar-title">Page Ranges</div>
+      <div id="rangesList" class="sidebar-scroll" style="flex:unset;padding:0;max-height:200px;overflow-y:auto"></div>
+      <p class="text-sm text-muted mt-6">Leave blank to include all pages</p>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- Merge progress (shown during processing) -->
+    <div id="mergeProgress" class="sidebar-section">
+      <div class="sidebar-title">Processing…</div>
+      <div class="progress-wrap mt-6">
+        <div class="progress-bar" id="progressBar" style="width:0%"></div>
+      </div>
+      <p class="text-sm text-muted mt-6" id="progressLabel">Preparing…</p>
+    </div>
+
+  </aside>
+</div>
+
+<!-- ═══ STATUS BAR ════════════════════════════════════════════════ -->
+<div class="status-bar">
+  <div class="status-item">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">No files loaded</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="status-item text-muted">Drag rows to reorder</div>
+</div>
+
+<!-- ═══ AD SLOT ═══════════════════════════════════════════════════ -->
+<div class="ad-slot">
+  <!-- Google AdSense — replace with real ad tag -->
+  Advertisement
+</div>
+
+<!-- ═══ TOAST HOST ════════════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<!-- ════════════════════════ SCRIPTS ══════════════════════════════ -->
+<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+'use strict';
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+/* ── Subscription check placeholder ─────────────────────────────── */
+function isSubscriber() { return true; }   // ← wire up auth later
+const FREE_PAGE_LIMIT = 8;
+
+/* ── State ───────────────────────────────────────────────────────── */
+let files = [];      // [{ file, name, pageCount, sizeBytes, thumbDataURL }]
+let dragSrcIdx = -1;
+
+/* ── DOM refs ────────────────────────────────────────────────────── */
+const dropZone    = document.getElementById('dropZone');
+const fileInput   = document.getElementById('fileInput');
+const fileList    = document.getElementById('fileList');
+const addMoreBtn  = document.getElementById('addMoreBtn');
+const mergeBtn    = document.getElementById('mergeBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+const sumFiles    = document.getElementById('sumFiles');
+const sumPages    = document.getElementById('sumPages');
+const sumSize     = document.getElementById('sumSize');
+const outputName  = document.getElementById('outputName');
+const pageOrder   = document.getElementById('pageOrder');
+const tierSection = document.getElementById('tierSection');
+const tierNotice  = document.getElementById('tierNotice');
+const rangesSection = document.getElementById('rangesSection');
+const rangesList  = document.getElementById('rangesList');
+const mergeProgress = document.getElementById('mergeProgress');
+const progressBar = document.getElementById('progressBar');
+const progressLabel = document.getElementById('progressLabel');
+const statusDot   = document.getElementById('statusDot');
+const statusText  = document.getElementById('statusText');
+const mergeBtnSpinner = document.getElementById('mergeBtnSpinner');
+
+/* ── Tier UI ─────────────────────────────────────────────────────── */
+function updateTierUI() {
+  tierSection.style.display = isSubscriber() ? 'none' : '';
+}
+updateTierUI();
+
+/* ── Drop zone wiring ────────────────────────────────────────────── */
+dropZone.addEventListener('click', () => fileInput.click());
+addMoreBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => addFiles(Array.from(e.target.files)));
+
+['dragenter','dragover'].forEach(ev =>
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('drag-over'); })
+);
+['dragleave','drop'].forEach(ev =>
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); })
+);
+dropZone.addEventListener('drop', e => {
+  const pdfs = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
+  if (pdfs.length) addFiles(pdfs);
+});
+
+// Global drag-over for work area when list is visible
+document.getElementById('workArea').addEventListener('dragover', e => {
+  if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+document.getElementById('workArea').addEventListener('drop', e => {
+  e.preventDefault();
+  const pdfs = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.name.endsWith('.pdf'));
+  if (pdfs.length) addFiles(pdfs);
+});
+
+/* ── Add files ───────────────────────────────────────────────────── */
+async function addFiles(newFiles) {
+  for (const f of newFiles) {
+    if (!f.name.toLowerCase().endsWith('.pdf') && f.type !== 'application/pdf') {
+      toast(`${f.name} is not a PDF — skipped`, 'error');
+      continue;
+    }
+    const entry = { file: f, name: f.name, pageCount: 0, sizeBytes: f.size, thumbDataURL: null, range: '' };
+    files.push(entry);
+    renderList();
+    // Async: get page count and thumb
+    loadPdfMeta(entry, files.length - 1);
+  }
+  // Reset input so same file can be re-added
+  fileInput.value = '';
+}
+
+async function loadPdfMeta(entry, idx) {
+  try {
+    const buf = await entry.file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    entry.pageCount = pdf.numPages;
+
+    // Render page 1 thumbnail (small)
+    const page = await pdf.getPage(1);
+    const vp = page.getViewport({ scale: 0.3 });
+    const canvas = document.createElement('canvas');
+    canvas.width  = vp.width;
+    canvas.height = vp.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    entry.thumbDataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+    renderList();
+    updateSummary();
+  } catch(err) {
+    entry.pageCount = '?';
+    renderList();
+    console.error('PDF meta error', err);
+  }
+}
+
+/* ── Render file list ────────────────────────────────────────────── */
+function renderList() {
+  const hasFiles = files.length > 0;
+  dropZone.style.display     = hasFiles ? 'none' : '';
+  addMoreBtn.className       = hasFiles ? 'btn visible' : 'btn';
+  clearAllBtn.style.display  = hasFiles ? '' : 'none';
+  mergeBtn.disabled          = files.length < 2;
+  rangesSection.style.display = hasFiles ? '' : 'none';
+
+  fileList.innerHTML = '';
+  rangesList.innerHTML = '';
+
+  files.forEach((entry, i) => {
+    // ── File row ──
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.dataset.idx = i;
+    row.draggable = true;
+
+    row.innerHTML = `
+      <span class="file-drag-handle" title="Drag to reorder">⠿</span>
+      <div class="file-thumb-wrap" id="thumb-${i}">
+        ${entry.thumbDataURL
+          ? `<img src="${entry.thumbDataURL}" alt="page 1">`
+          : `<span>📄</span>`}
+      </div>
+      <div class="file-info">
+        <div class="file-name" title="${entry.name}">${entry.name}</div>
+        <div class="file-meta">
+          ${entry.pageCount !== 0 ? `${entry.pageCount} page${entry.pageCount!==1?'s':''}` : 'Loading…'}
+          · ${fmtBytes(entry.sizeBytes)}
+        </div>
+      </div>
+      <span class="file-order">${i + 1}</span>
+      <button class="file-remove" title="Remove" data-remove="${i}">✕</button>
+    `;
+
+    // Row drag events
+    row.addEventListener('dragstart', onRowDragStart);
+    row.addEventListener('dragover',  onRowDragOver);
+    row.addEventListener('dragleave', onRowDragLeave);
+    row.addEventListener('drop',      onRowDrop);
+    row.addEventListener('dragend',   onRowDragEnd);
+
+    fileList.appendChild(row);
+
+    // ── Range input (sidebar) ──
+    const rr = document.createElement('div');
+    rr.className = 'field';
+    rr.innerHTML = `
+      <label style="display:flex;justify-content:space-between">
+        <span class="text-xs" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px" title="${entry.name}">${i+1}. ${entry.name}</span>
+        <span class="text-xs text-muted">${entry.pageCount || '?'} pp</span>
+      </label>
+      <input type="text" placeholder="e.g. 1-3, 5, 7-9  (blank = all)" value="${entry.range || ''}" data-range-idx="${i}" style="font-family:var(--font-mono);font-size:11px">
+    `;
+    rr.querySelector('input').addEventListener('input', e => {
+      files[i].range = e.target.value.trim();
+    });
+    rangesList.appendChild(rr);
+  });
+
+  // Remove buttons
+  fileList.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      const idx = parseInt(e.currentTarget.dataset.remove);
+      files.splice(idx, 1);
+      renderList();
+      updateSummary();
+    });
+  });
+
+  updateSummary();
+}
+
+/* ── Summary sidebar ─────────────────────────────────────────────── */
+function updateSummary() {
+  const totalPages = files.reduce((s, f) => s + (parseInt(f.pageCount) || 0), 0);
+  const totalBytes = files.reduce((s, f) => s + f.sizeBytes, 0);
+  sumFiles.textContent = files.length;
+  sumPages.textContent = totalPages || '—';
+  sumSize.textContent  = totalBytes ? fmtBytes(totalBytes) : '—';
+
+  if (files.length === 0) {
+    statusDot.className = 'dot';
+    statusText.textContent = 'No files loaded';
+  } else if (files.length === 1) {
+    statusDot.className = 'dot yellow';
+    statusText.textContent = '1 file — add at least one more to merge';
+  } else {
+    statusDot.className = 'dot green';
+    statusText.textContent = `${files.length} files ready — ${totalPages} total pages`;
+  }
+}
+
+/* ── Row drag-to-reorder ─────────────────────────────────────────── */
+function onRowDragStart(e) {
+  dragSrcIdx = parseInt(this.dataset.idx);
+  this.classList.add('drag-src');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragSrcIdx);
+}
+function onRowDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const idx = parseInt(this.dataset.idx);
+  if (idx === dragSrcIdx) return;
+  this.classList.add(
+    e.offsetY < this.offsetHeight / 2 ? 'drag-over-top' : 'drag-over-bottom'
+  );
+}
+function onRowDragLeave() {
+  this.classList.remove('drag-over-top', 'drag-over-bottom');
+}
+function onRowDrop(e) {
+  e.preventDefault();
+  const targetIdx = parseInt(this.dataset.idx);
+  this.classList.remove('drag-over-top', 'drag-over-bottom');
+  if (targetIdx === dragSrcIdx) return;
+
+  const below = e.offsetY >= this.offsetHeight / 2;
+  const insertAt = below ? targetIdx + 1 : targetIdx;
+  const moved = files.splice(dragSrcIdx, 1)[0];
+  const realInsert = insertAt > dragSrcIdx ? insertAt - 1 : insertAt;
+  files.splice(realInsert, 0, moved);
+  renderList();
+}
+function onRowDragEnd() {
+  document.querySelectorAll('.file-row').forEach(r =>
+    r.classList.remove('drag-src', 'drag-over-top', 'drag-over-bottom'));
+  dragSrcIdx = -1;
+}
+
+/* ── Clear all ───────────────────────────────────────────────────── */
+clearAllBtn.addEventListener('click', () => {
+  files = [];
+  renderList();
+});
+
+/* ── Merge ───────────────────────────────────────────────────────── */
+mergeBtn.addEventListener('click', startMerge);
+
+async function startMerge() {
+  if (files.length < 2) { toast('Add at least 2 PDFs to merge', 'error'); return; }
+
+  mergeBtn.disabled = true;
+  mergeBtnSpinner.style.display = '';
+  mergeProgress.style.display = '';
+  setProgress(0, 'Starting…');
+
+  try {
+    const orderedFiles = pageOrder.value === 'reverse' ? [...files].reverse() : files;
+    const merged = await PDFLib.PDFDocument.create();
+
+    for (let fi = 0; fi < orderedFiles.length; fi++) {
+      const entry = orderedFiles[fi];
+      setProgress(
+        Math.round((fi / orderedFiles.length) * 90),
+        `Processing ${entry.name}…`
+      );
+
+      const buf = await entry.file.arrayBuffer();
+      const srcPdf = await PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+      const totalPgs = srcPdf.getPageCount();
+
+      // Determine which pages to copy
+      let pageIndices = resolvePageIndices(entry.range, totalPgs);
+
+      // Free tier cap
+      if (!isSubscriber() && pageIndices.length > FREE_PAGE_LIMIT) {
+        pageIndices = pageIndices.slice(0, FREE_PAGE_LIMIT);
+      }
+
+      const copied = await merged.copyPages(srcPdf, pageIndices);
+      copied.forEach(p => merged.addPage(p));
+    }
+
+    setProgress(95, 'Saving…');
+    const outBytes = await merged.save();
+    setProgress(100, 'Done!');
+
+    // Download
+    const blob = new Blob([outBytes], { type: 'application/pdf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = sanitiseFilename(outputName.value) || 'merged.pdf';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    toast(`Merged ${files.length} files — ${merged.getPageCount()} pages`, 'success');
+  } catch (err) {
+    console.error(err);
+    toast('Merge failed: ' + err.message, 'error');
+  } finally {
+    mergeBtn.disabled = false;
+    mergeBtnSpinner.style.display = 'none';
+    setTimeout(() => { mergeProgress.style.display = 'none'; }, 2000);
+  }
+}
+
+/* ── Helpers ─────────────────────────────────────────────────────── */
+function resolvePageIndices(rangeStr, total) {
+  if (!rangeStr || !rangeStr.trim()) {
+    return Array.from({ length: total }, (_, i) => i);
+  }
+  const indices = new Set();
+  const parts = rangeStr.split(',');
+  for (const part of parts) {
+    const m = part.trim().match(/^(\d+)(?:\s*[-–]\s*(\d+))?$/);
+    if (!m) continue;
+    const start = Math.max(1, parseInt(m[1]));
+    const end   = m[2] ? Math.min(total, parseInt(m[2])) : start;
+    for (let p = start; p <= end; p++) indices.add(p - 1);  // 0-based
+  }
+  return [...indices].sort((a, b) => a - b);
+}
+
+function setProgress(pct, label) {
+  progressBar.style.width  = pct + '%';
+  progressLabel.textContent = label;
+}
+
+function fmtBytes(bytes) {
+  if (bytes < 1024)       return bytes + ' B';
+  if (bytes < 1024*1024)  return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function sanitiseFilename(name) {
+  let n = name.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  if (!n.toLowerCase().endsWith('.pdf')) n += '.pdf';
+  return n;
+}
+
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+/* ── Init ────────────────────────────────────────────────────────── */
+renderList();
+</script>
+</body>
+</html>
