@@ -880,15 +880,20 @@ document.querySelectorAll('.tool-tab').forEach(btn => {
   btn.addEventListener('click', () => history.replaceState(null, '', '#' + btn.dataset.tab));
 });
 
-// Read hash on load — must fire after tab listeners are attached
-window.addEventListener('load', () => {
+function switchToHash() {
   const validUtilTabs = ['protect','unlock','compress','repair'];
   const hashTab = window.location.hash.replace('#','');
   if (validUtilTabs.includes(hashTab)) {
     const tabBtn = document.querySelector(`.tool-tab[data-tab="${hashTab}"]`);
     if (tabBtn) tabBtn.click();
   }
-});
+}
+
+// On initial load
+window.addEventListener('load', switchToHash);
+
+// When hash changes without a page reload (clicking nav links on same page)
+window.addEventListener('hashchange', switchToHash);
 </script>
 </body>
 </html>
