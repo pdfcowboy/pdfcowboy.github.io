@@ -363,8 +363,18 @@ body { display: flex; flex-direction: column; padding-top: 44px; }
     </div>
 
     <div class="util-settings">
-      <div class="info-box warning">
-        ⚠ Client-side compression removes redundant metadata and restructures the PDF. It works best on PDFs with lots of text or annotations. Image-heavy PDFs may see limited reduction.
+      <div class="info-box">
+        Powered by Ghostscript on our compression server. Significantly reduces file size by recompressing images and removing redundant data. Maximum 25 MB.
+      </div>
+
+      <div class="field">
+        <label>Quality</label>
+        <select id="compress-quality">
+          <option value="screen">Screen — smallest file, lower quality (72 dpi)</option>
+          <option value="ebook" selected>Balanced — good quality, smaller file (150 dpi)</option>
+          <option value="printer">Print — high quality (300 dpi)</option>
+          <option value="prepress">Prepress — maximum quality, minimal compression</option>
+        </select>
       </div>
 
       <div id="compress-result" style="display:none">
@@ -666,52 +676,99 @@ document.getElementById('btn-unlock').addEventListener('click', async () => {
 });
 
 /* ══════════════════════════════════════════════════════════════
-   COMPRESS
+   COMPRESS — Render API
 ══════════════════════════════════════════════════════════════ */
+const RENDER_URL = 'https://pdfcowboy-compress.onrender.com';
+
+// Ping Render as soon as a file is dropped/selected to wake it up
+const origLoadFile = loadFile;
+async function loadFile(tab, file) {
+  if (tab === 'compress') {
+    fetch(RENDER_URL + '/ping').catch(() => {}); // silent wake-up ping
+  }
+  await origLoadFile(tab, file);
+}
+
 document.getElementById('btn-compress').addEventListener('click', async () => {
   const f = files['compress'];
   if (!f) return;
 
-  const btn = document.getElementById('btn-compress');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Compressing…';
-  showProgress('compress', 20);
+  // Client-side size check
+  if (f.file.size > 25 * 1024 * 1024) {
+    toast('File too large — maximum 25 MB', 'error');
+    return;
+  }
+
+  const btn     = document.getElementById('btn-compress');
+  const quality = document.getElementById('compress-quality').value;
+  btn.disabled  = true;
+  btn.innerHTML = '<span class="spinner"></span> Uploading…';
+  showProgress('compress', 0);
+
+  // Fake progress — crawls to 85% while real request runs
+  let fakePct = 0;
+  const fakeInterval = setInterval(() => {
+    fakePct += (85 - fakePct) * 0.04;
+    const pct = Math.round(fakePct);
+    const label = pct < 30 ? 'Uploading…' : pct < 60 ? 'Waking up server…' : 'Compressing…';
+    showProgressLabel('compress', pct, label);
+  }, 400);
 
   try {
-    // Load with objectCompression enabled to reduce size
-    const doc = await PDFLib.PDFDocument.load(f.buf.slice(0), { ignoreEncryption: true });
-    showProgress('compress', 60);
+    const formData = new FormData();
+    formData.append('file', f.file);
+    formData.append('quality', quality);
 
-    const compressed = await doc.save({
-      useObjectStreams: true,      // Packs objects more efficiently
-      addDefaultPage: false,
-      objectsPerTick: 50,
+    const response = await fetch(RENDER_URL + '/compress', {
+      method: 'POST',
+      body: formData,
     });
-    showProgress('compress', 90);
 
-    const before = f.buf.byteLength;
-    const after  = compressed.byteLength;
-    const saving = before - after;
-    const pct    = ((saving / before) * 100).toFixed(1);
+    clearInterval(fakeInterval);
 
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: 'Compression failed' }));
+      throw new Error(err.error || 'Compression failed');
+    }
+
+    showProgressLabel('compress', 95, 'Downloading…');
+
+    // Get the compressed file
+    const blob         = await response.blob();
+    const beforeSize   = f.file.size;
+    const afterSize    = blob.size;
+    const savingBytes  = beforeSize - afterSize;
+    const savingPct    = ((savingBytes / beforeSize) * 100).toFixed(1);
+
+    // Show result stats
     const resultEl = document.getElementById('compress-result');
-    document.getElementById('compress-before').textContent  = fmtBytes(before);
-    document.getElementById('compress-after').textContent   = fmtBytes(after);
-    document.getElementById('compress-saving').textContent  = saving > 0 ? `-${pct}%` : '0%';
-    document.getElementById('compress-saving').style.color  = saving > 0 ? 'var(--success)' : 'var(--muted)';
+    document.getElementById('compress-before').textContent  = fmtBytes(beforeSize);
+    document.getElementById('compress-after').textContent   = fmtBytes(afterSize);
+    document.getElementById('compress-saving').textContent  = savingBytes > 0 ? `-${savingPct}%` : '0%';
+    document.getElementById('compress-saving').style.color  = savingBytes > 0 ? 'var(--success)' : 'var(--muted)';
     resultEl.style.display = 'block';
 
+    // Download
     const name = sanitise(document.getElementById('compress-outname').value) || 'compressed.pdf';
-    downloadBlob(new Blob([compressed], {type:'application/pdf'}), name);
-    showProgress('compress', 100);
-    toast(saving > 0 ? `Reduced by ${pct}% (${fmtBytes(saving)})` : 'No size reduction possible', saving > 0 ? 'success' : '');
+    downloadBlob(blob, name);
+
+    showProgressLabel('compress', 100, 'Done!');
+    toast(savingBytes > 0 ? `Reduced by ${savingPct}% (${fmtBytes(savingBytes)} saved)` : 'No reduction possible for this PDF', savingBytes > 0 ? 'success' : '');
+
   } catch(err) {
+    clearInterval(fakeInterval);
     console.error(err);
-    toast('Compression failed: ' + err.message, 'error');
+    // Check if it's a wake-up timeout
+    if (err.message.includes('fetch') || err.message.includes('network')) {
+      toast('Server is waking up — please try again in 30 seconds', 'error');
+    } else {
+      toast('Compression failed: ' + err.message, 'error');
+    }
+    hideProgress('compress');
   } finally {
-    btn.disabled = false;
+    btn.disabled  = false;
     btn.innerHTML = '⚡ Compress PDF';
-    setTimeout(() => hideProgress('compress'), 2000);
+    setTimeout(() => hideProgress('compress'), 3000);
   }
 });
 
@@ -770,6 +827,14 @@ function showProgress(tab, pct) {
   const bar  = document.getElementById('pbar-' + tab);
   wrap.style.display = '';
   bar.style.width = pct + '%';
+}
+function showProgressLabel(tab, pct, label) {
+  showProgress(tab, pct);
+  // Update button text as progress label for compress
+  if (tab === 'compress') {
+    const btn = document.getElementById('btn-compress');
+    if (btn.disabled) btn.innerHTML = `<span class="spinner"></span> ${label}`;
+  }
 }
 function hideProgress(tab) {
   document.getElementById('progress-' + tab).style.display = 'none';
