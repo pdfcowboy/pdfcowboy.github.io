@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: pdfcowboy-compress
+    runtime: python
+    rootDir: api
+    buildCommand: apt-get update && apt-get install -y ghostscript && pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
