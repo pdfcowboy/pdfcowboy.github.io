@@ -870,9 +870,12 @@ function toast(msg, type='') {
 
 setStatus('', 'Select a tool and drop a PDF to begin', '');
 
-// Update hash when tab changes
+// Update hash when tab changes (user clicks only, not programmatic)
+let switchingFromHash = false;
 document.querySelectorAll('.tool-tab').forEach(btn => {
-  btn.addEventListener('click', () => history.replaceState(null, '', '#' + btn.dataset.tab));
+  btn.addEventListener('click', () => {
+    if (!switchingFromHash) history.replaceState(null, '', '#' + btn.dataset.tab);
+  });
 });
 
 function switchToHash() {
@@ -880,14 +883,15 @@ function switchToHash() {
   const hashTab = window.location.hash.replace('#','');
   if (validUtilTabs.includes(hashTab)) {
     const tabBtn = document.querySelector(`.tool-tab[data-tab="${hashTab}"]`);
-    if (tabBtn) tabBtn.click();
+    if (tabBtn) {
+      switchingFromHash = true;
+      tabBtn.click();
+      switchingFromHash = false;
+    }
   }
 }
 
-// On initial load
 window.addEventListener('load', switchToHash);
-
-// When hash changes without a page reload (clicking nav links on same page)
 window.addEventListener('hashchange', switchToHash);
 </script>
 </body>
