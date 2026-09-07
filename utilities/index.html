@@ -377,6 +377,29 @@ body { display: flex; flex-direction: column; padding-top: 44px; }
         </select>
       </div>
 
+      <!-- Estimate box — shown once file is loaded -->
+      <div id="compress-estimate" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted)">Estimated output</span>
+          <span style="font-size:10px;color:var(--muted);font-style:italic">actual result may vary</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div style="text-align:center;flex:1">
+            <div style="font-size:15px;font-weight:700;font-family:var(--font-mono);color:var(--muted)" id="est-before">—</div>
+            <div style="font-size:10px;color:var(--muted)">Original</div>
+          </div>
+          <div style="font-size:18px;color:var(--border)">→</div>
+          <div style="text-align:center;flex:1">
+            <div style="font-size:15px;font-weight:700;font-family:var(--font-mono);color:var(--gold)" id="est-after">—</div>
+            <div style="font-size:10px;color:var(--muted)">Est. output</div>
+          </div>
+          <div style="text-align:center;flex:1">
+            <div style="font-size:15px;font-weight:700;font-family:var(--font-mono);color:var(--success)" id="est-saving">—</div>
+            <div style="font-size:10px;color:var(--muted)">Est. saving</div>
+          </div>
+        </div>
+      </div>
+
       <div id="compress-result" style="display:none">
         <div class="result-stats">
           <div class="stat-box">
@@ -534,6 +557,8 @@ async function loadFile(tab, file) {
 
     setStatus('green', `${file.name} — ${fmtBytes(file.size)}`, 'Ready');
     updateStatus();
+    // Update estimate if this is the compress tab
+    if (tab === 'compress') updateCompressEstimate();
   } catch(err) {
     toast('Could not read file: ' + err.message, 'error');
     setStatus('red', 'Load failed', '');
@@ -547,6 +572,9 @@ function clearFile(tab) {
   document.getElementById('btn-' + tab).disabled = true;
   const rp = document.getElementById(tab + '-result');
   if (rp) rp.style.display = 'none';
+  if (tab === 'compress') {
+    document.getElementById('compress-estimate').style.display = 'none';
+  }
   setStatus('', 'Select a tool and drop a PDF to begin', '');
 }
 
@@ -683,6 +711,35 @@ document.getElementById('btn-unlock').addEventListener('click', async () => {
    COMPRESS — Render API
 ══════════════════════════════════════════════════════════════ */
 const RENDER_URL = 'https://pdfcowboy-compress.onrender.com';
+
+// Reduction estimates per quality setting (min, max as fractions)
+const QUALITY_ESTIMATES = {
+  screen:   { min: 0.60, max: 0.80 },
+  ebook:    { min: 0.30, max: 0.50 },
+  printer:  { min: 0.10, max: 0.25 },
+  prepress: { min: 0.02, max: 0.10 },
+};
+
+function updateCompressEstimate() {
+  const f = files['compress'];
+  if (!f) return;
+  const quality  = document.getElementById('compress-quality').value;
+  const est      = QUALITY_ESTIMATES[quality] || QUALITY_ESTIMATES.ebook;
+  const origSize = f.file.size;
+  // Use midpoint of range for estimate
+  const reduction = (est.min + est.max) / 2;
+  const estSize   = Math.round(origSize * (1 - reduction));
+  const estSaving = origSize - estSize;
+  const estPct    = Math.round(reduction * 100);
+
+  document.getElementById('est-before').textContent  = fmtBytes(origSize);
+  document.getElementById('est-after').textContent   = `~${fmtBytes(estSize)}`;
+  document.getElementById('est-saving').textContent  = `~${estPct}%`;
+  document.getElementById('compress-estimate').style.display = '';
+}
+
+// Update estimate when quality changes
+document.getElementById('compress-quality').addEventListener('change', updateCompressEstimate);
 
 document.getElementById('btn-compress').addEventListener('click', async () => {
   const f = files['compress'];
