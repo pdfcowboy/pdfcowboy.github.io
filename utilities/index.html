@@ -493,6 +493,35 @@ let currentTab = 'protect';
 let files = {}; // { tabName: { file, buf } }
 
 /* ══════════════════════════════════════════════════════════════
+   COMPRESS ESTIMATE (defined early — called from loadFile)
+══════════════════════════════════════════════════════════════ */
+const RENDER_URL = 'https://pdfcowboy-compress.onrender.com';
+
+const QUALITY_ESTIMATES = {
+  screen:   { min: 0.60, max: 0.80 },
+  ebook:    { min: 0.30, max: 0.50 },
+  printer:  { min: 0.10, max: 0.25 },
+  prepress: { min: 0.02, max: 0.10 },
+};
+
+function updateCompressEstimate() {
+  const f = files['compress'];
+  if (!f) return;
+  const quality  = document.getElementById('compress-quality').value;
+  const est      = QUALITY_ESTIMATES[quality] || QUALITY_ESTIMATES.ebook;
+  const origSize = f.file.size;
+  const reduction = (est.min + est.max) / 2;
+  const estSize   = Math.round(origSize * (1 - reduction));
+  const estSaving = origSize - estSize;
+  const estPct    = Math.round(reduction * 100);
+
+  document.getElementById('est-before').textContent  = fmtBytes(origSize);
+  document.getElementById('est-after').textContent   = `~${fmtBytes(estSize)}`;
+  document.getElementById('est-saving').textContent  = `~${estPct}%`;
+  document.getElementById('compress-estimate').style.display = '';
+}
+
+/* ══════════════════════════════════════════════════════════════
    TAB SWITCHING
 ══════════════════════════════════════════════════════════════ */
 document.querySelectorAll('.tool-tab').forEach(btn => {
@@ -710,34 +739,6 @@ document.getElementById('btn-unlock').addEventListener('click', async () => {
 /* ══════════════════════════════════════════════════════════════
    COMPRESS — Render API
 ══════════════════════════════════════════════════════════════ */
-const RENDER_URL = 'https://pdfcowboy-compress.onrender.com';
-
-// Reduction estimates per quality setting (min, max as fractions)
-const QUALITY_ESTIMATES = {
-  screen:   { min: 0.60, max: 0.80 },
-  ebook:    { min: 0.30, max: 0.50 },
-  printer:  { min: 0.10, max: 0.25 },
-  prepress: { min: 0.02, max: 0.10 },
-};
-
-function updateCompressEstimate() {
-  const f = files['compress'];
-  if (!f) return;
-  const quality  = document.getElementById('compress-quality').value;
-  const est      = QUALITY_ESTIMATES[quality] || QUALITY_ESTIMATES.ebook;
-  const origSize = f.file.size;
-  // Use midpoint of range for estimate
-  const reduction = (est.min + est.max) / 2;
-  const estSize   = Math.round(origSize * (1 - reduction));
-  const estSaving = origSize - estSize;
-  const estPct    = Math.round(reduction * 100);
-
-  document.getElementById('est-before').textContent  = fmtBytes(origSize);
-  document.getElementById('est-after').textContent   = `~${fmtBytes(estSize)}`;
-  document.getElementById('est-saving').textContent  = `~${estPct}%`;
-  document.getElementById('compress-estimate').style.display = '';
-}
-
 // Update estimate when quality changes
 document.getElementById('compress-quality').addEventListener('change', updateCompressEstimate);
 
