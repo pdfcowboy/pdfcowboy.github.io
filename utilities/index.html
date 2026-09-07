@@ -508,6 +508,10 @@ document.querySelectorAll('[data-clear]').forEach(btn => {
 });
 
 async function loadFile(tab, file) {
+  // Wake up Render as soon as a compress file is selected
+  if (tab === 'compress') {
+    fetch('https://pdfcowboy-compress.onrender.com/ping').catch(() => {});
+  }
   setStatus('yellow', 'Loading…', '');
   try {
     const buf = await file.arrayBuffer();
@@ -679,15 +683,6 @@ document.getElementById('btn-unlock').addEventListener('click', async () => {
    COMPRESS — Render API
 ══════════════════════════════════════════════════════════════ */
 const RENDER_URL = 'https://pdfcowboy-compress.onrender.com';
-
-// Ping Render as soon as a file is dropped/selected to wake it up
-const origLoadFile = loadFile;
-async function loadFile(tab, file) {
-  if (tab === 'compress') {
-    fetch(RENDER_URL + '/ping').catch(() => {}); // silent wake-up ping
-  }
-  await origLoadFile(tab, file);
-}
 
 document.getElementById('btn-compress').addEventListener('click', async () => {
   const f = files['compress'];
