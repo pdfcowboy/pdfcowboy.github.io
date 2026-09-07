@@ -880,14 +880,15 @@ document.querySelectorAll('.tool-tab').forEach(btn => {
   btn.addEventListener('click', () => history.replaceState(null, '', '#' + btn.dataset.tab));
 });
 
-// Read hash on load — runs after all listeners are set up
-const validUtilTabs = ['protect','unlock','compress','repair'];
-const hashTab = window.location.hash.replace('#','');
-if (validUtilTabs.includes(hashTab) && hashTab !== 'protect') {
-  // Simulate a tab click to switch properly
-  const tabBtn = document.querySelector(`.tool-tab[data-tab="${hashTab}"]`);
-  if (tabBtn) tabBtn.click();
-}
+// Read hash on load — must fire after tab listeners are attached
+window.addEventListener('load', () => {
+  const validUtilTabs = ['protect','unlock','compress','repair'];
+  const hashTab = window.location.hash.replace('#','');
+  if (validUtilTabs.includes(hashTab)) {
+    const tabBtn = document.querySelector(`.tool-tab[data-tab="${hashTab}"]`);
+    if (tabBtn) tabBtn.click();
+  }
+});
 </script>
 </body>
 </html>
