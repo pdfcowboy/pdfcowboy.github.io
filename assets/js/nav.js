@@ -58,10 +58,10 @@
       label: 'Utilities',
       href:  'utilities/',
       tools: [
-        { label: 'Protect',   href: 'utilities/' },
-        { label: 'Unlock',    href: 'utilities/' },
-        { label: 'Compress',  href: 'utilities/' },
-        { label: 'Repair',    href: 'utilities/' },
+        { label: 'Protect',   href: 'utilities/#protect'  },
+        { label: 'Unlock',    href: 'utilities/#unlock'   },
+        { label: 'Compress',  href: 'utilities/#compress' },
+        { label: 'Repair',    href: 'utilities/#repair'   },
       ]
     },
     {

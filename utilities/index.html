@@ -874,6 +874,20 @@ function toast(msg, type='') {
 }
 
 setStatus('', 'Select a tool and drop a PDF to begin', '');
+
+// Read hash on load to jump to correct tab
+const validUtilTabs = ['protect','unlock','compress','repair'];
+const hashTab = window.location.hash.replace('#','');
+if (validUtilTabs.includes(hashTab)) {
+  currentTab = hashTab;
+  document.querySelectorAll('.tool-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === hashTab));
+  document.querySelectorAll('.util-card').forEach(c => c.classList.toggle('active', c.id === 'card-' + hashTab));
+}
+
+// Update hash when tab changes
+document.querySelectorAll('.tool-tab').forEach(btn => {
+  btn.addEventListener('click', () => history.replaceState(null, '', '#' + btn.dataset.tab));
+});
 </script>
 </body>
 </html>
