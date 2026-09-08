@@ -1,7 +1,7 @@
 import os
 import tempfile
 import logging
-import pikepdf
+import fitz  # PyMuPDF
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -14,6 +14,13 @@ logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 25 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+QUALITY_SETTINGS = {
+    'screen':   {'image_quality': 30,  'garbage': 4, 'clean': True},
+    'ebook':    {'image_quality': 60,  'garbage': 3, 'clean': True},
+    'printer':  {'image_quality': 80,  'garbage': 2, 'clean': True},
+    'prepress': {'image_quality': 95,  'garbage': 1, 'clean': False},
+}
 
 @app.route('/ping', methods=['GET'])
 def ping():
@@ -31,6 +38,9 @@ def compress():
         return jsonify({'error': 'File too large — maximum 25 MB'}), 413
 
     quality = request.form.get('quality', 'ebook')
+    if quality not in QUALITY_SETTINGS:
+        quality = 'ebook'
+    settings = QUALITY_SETTINGS[quality]
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -39,28 +49,21 @@ def compress():
             f.save(input_path)
             input_size = os.path.getsize(input_path)
 
-            # Open and re-save with compression
-            with pikepdf.open(input_path) as pdf:
-                # Set compression level based on quality
-                compress_streams = True
-                if quality == 'screen':
-                    pdf.save(output_path,
-                        compress_streams=True,
-                        object_stream_mode=pikepdf.ObjectStreamMode.generate,
-                        recompress_flate=True,
-                        normalize_content=True)
-                elif quality == 'prepress':
-                    pdf.save(output_path,
-                        compress_streams=False,
-                        object_stream_mode=pikepdf.ObjectStreamMode.disable)
-                else:
-                    pdf.save(output_path,
-                        compress_streams=True,
-                        object_stream_mode=pikepdf.ObjectStreamMode.generate,
-                        recompress_flate=True)
+            doc = fitz.open(input_path)
+            doc.save(
+                output_path,
+                garbage=settings['garbage'],
+                deflate=True,
+                clean=settings['clean'],
+                deflate_images=True,
+                deflate_fonts=True,
+                image_quality=settings['image_quality'],
+            )
+            doc.close()
 
             output_size = os.path.getsize(output_path)
-            logger.info(f'Compressed: {input_size} → {output_size} bytes')
+            saving_pct  = round(((input_size - output_size) / input_size) * 100, 1)
+            logger.info(f'Compressed: {input_size} -> {output_size} bytes ({saving_pct}% saving)')
 
             base_name = secure_filename(f.filename).rsplit('.', 1)[0]
             return send_file(output_path, mimetype='application/pdf',
