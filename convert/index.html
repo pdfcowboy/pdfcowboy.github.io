@@ -316,9 +316,9 @@ body { display: flex; flex-direction: column; padding-top: 44px; }
       <div class="field">
         <label>Format</label>
         <select id="imgFormat">
-          <option value="jpeg">JPG — smaller file, best for photos</option>
-          <option value="png">PNG — lossless, best for drawings</option>
-          <option value="webp">WebP — modern, very small file</option>
+          <option value="jpeg">JPG — best for photos and complex images</option>
+          <option value="png">PNG — best for drawings, text and flat colours</option>
+          <option value="webp">WebP — modern format, good for all types</option>
         </select>
       </div>
       <div class="field">
@@ -796,25 +796,28 @@ async function doPdfToImages() {
     const canvas = await renderPageToCanvas(pageNums[0], scale);
     setProgress(90, 'Saving…');
     const dataURL = canvas.toDataURL('image/' + format, quality);
+    const blob    = dataURLToBlob(dataURL);
     downloadDataURL(dataURL, `${baseName}_p${pageNums[0]}.${ext}`);
     setProgress(100, 'Done!');
-    toast(`Page ${pageNums[0]} exported as ${ext.toUpperCase()}`, 'success');
+    toast(`Page ${pageNums[0]} exported — ${fmtBytes(blob.size)}`, 'success');
   } else {
     // Multiple pages — ZIP
     const zipWriter = new zip.ZipWriter(new zip.BlobWriter('application/zip'));
+    let totalSize = 0;
     for (let i = 0; i < pageNums.length; i++) {
       setProgress(Math.round((i / pageNums.length) * 90), `Rendering page ${pageNums[i]}…`);
       const canvas  = await renderPageToCanvas(pageNums[i], scale);
       const dataURL = canvas.toDataURL('image/' + format, quality);
       const blob    = dataURLToBlob(dataURL);
+      totalSize += blob.size;
       const num     = String(pageNums[i]).padStart(String(totalPages).length, '0');
       await zipWriter.add(`${baseName}_p${num}.${ext}`, new zip.BlobReader(blob));
     }
     setProgress(95, 'Zipping…');
-    const blob = await zipWriter.close();
-    downloadBlob(blob, baseName + '.zip');
+    const zipBlob = await zipWriter.close();
+    downloadBlob(zipBlob, baseName + '.zip');
     setProgress(100, 'Done!');
-    toast(`${pageNums.length} pages exported as ZIP`, 'success');
+    toast(`${pageNums.length} pages exported — ${fmtBytes(totalSize)} total images, ${fmtBytes(zipBlob.size)} ZIP`, 'success');
   }
 }
 
@@ -874,9 +877,10 @@ async function doImagesToPdf() {
 
   setProgress(95, 'Saving…');
   const bytes = await doc.save();
-  downloadBlob(new Blob([bytes], {type:'application/pdf'}), baseName + '.pdf');
+  const blob  = new Blob([bytes], {type:'application/pdf'});
+  downloadBlob(blob, baseName + '.pdf');
   setProgress(100, 'Done!');
-  toast(`${imgFiles.length} images combined into PDF`, 'success');
+  toast(`${imgFiles.length} images combined into PDF — ${fmtBytes(blob.size)}`, 'success');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -909,9 +913,10 @@ async function doPdfToSingle() {
 
   setProgress(95, 'Saving…');
   const dataURL = out.toDataURL('image/' + format, quality);
+  const blob    = dataURLToBlob(dataURL);
   downloadDataURL(dataURL, `${baseName}.${ext}`);
   setProgress(100, 'Done!');
-  toast(`${totalPages} pages exported as single ${ext.toUpperCase()}`, 'success');
+  toast(`${totalPages} pages stitched into single ${ext.toUpperCase()} — ${fmtBytes(blob.size)}`, 'success');
 }
 
 /* ══════════════════════════════════════════════════════════════
