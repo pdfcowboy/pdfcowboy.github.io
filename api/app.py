@@ -16,10 +16,10 @@ MAX_FILE_SIZE = 25 * 1024 * 1024
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 QUALITY_SETTINGS = {
-    'screen':   {'image_quality': 30,  'garbage': 4, 'clean': True},
-    'ebook':    {'image_quality': 60,  'garbage': 3, 'clean': True},
-    'printer':  {'image_quality': 80,  'garbage': 2, 'clean': True},
-    'prepress': {'image_quality': 95,  'garbage': 1, 'clean': False},
+    'screen':   {'garbage': 4, 'deflate': True, 'clean': True},
+    'ebook':    {'garbage': 3, 'deflate': True, 'clean': True},
+    'printer':  {'garbage': 2, 'deflate': True, 'clean': True},
+    'prepress': {'garbage': 1, 'deflate': True, 'clean': False},
 }
 
 @app.route('/ping', methods=['GET'])
@@ -53,11 +53,10 @@ def compress():
             doc.save(
                 output_path,
                 garbage=settings['garbage'],
-                deflate=True,
+                deflate=settings['deflate'],
                 clean=settings['clean'],
                 deflate_images=True,
                 deflate_fonts=True,
-                image_quality=settings['image_quality'],
             )
             doc.close()
 
