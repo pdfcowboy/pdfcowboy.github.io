@@ -1,0 +1,3518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Measure — PDF Cowboy</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../../assets/css/style.css">
+<style>
+  /* ── PDF Measure overrides & tool-specific styles ── */
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    display: flex;
+    flex-direction: column;
+    padding-top: 44px; /* site-header height */
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  /* ── Measure toolbar (sits below site-header) ── */
+  .measure-toolbar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    row-gap: 5px;
+  }
+
+  .toolbar { display: flex; align-items: center; gap: 3px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--space-2); }
+  .tool-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 5px 9px; border-radius: var(--radius-md); font-size: var(--text-base); font-family: var(--font-ui); display: flex; align-items: center; gap: var(--space-2); transition: all 0.15s; white-space: nowrap; }
+  .tool-btn:hover { background: var(--surface); color: var(--text); }
+  .tool-btn.active { background: var(--accent); color: var(--white); }
+  .tool-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .tool-sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
+
+  .zoom-group { display: flex; align-items: center; gap: 5px; font-size: var(--text-base); color: var(--muted); }
+  .zoom-group button { background: var(--bg); border: 1px solid var(--border); color: var(--text); width: 24px; height: 24px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-lg); display: flex; align-items: center; justify-content: center; }
+  .zoom-group button:hover { background: var(--surface); border-color: var(--gold); }
+  #zoomLabel { font-family: var(--font-mono); color: var(--gold); min-width: 38px; text-align: center; font-size: var(--text-base); }
+
+  .page-nav { display: flex; align-items: center; gap: 7px; font-size: var(--text-base); color: var(--muted); }
+  .page-nav button { background: var(--bg); border: 1px solid var(--border); color: var(--text); width: 26px; height: 26px; border-radius: var(--radius-md); cursor: pointer; font-size: var(--text-lg); display: flex; align-items: center; justify-content: center; }
+  .page-nav button:hover { background: var(--surface); border-color: var(--gold); }
+  .page-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  .canvas-wrap { flex: 1; overflow: auto; background: var(--bg-deep); position: relative; display: flex; align-items: flex-start; justify-content: flex-start; }
+  .canvas-container { position: relative; display: inline-block; margin: var(--space-9); }
+  #pdfCanvas { display: block; box-shadow: 0 8px 40px var(--overlay-mid); }
+  #measureCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+  #interactCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+  #interactCanvas.cursor-select { cursor: default; }
+  #interactCanvas.cursor-move   { cursor: move; }
+  #interactCanvas.cursor-grab   { cursor: grab; }
+  #interactCanvas.cursor-poly   { cursor: crosshair; }
+  #interactCanvas.cursor-close  { cursor: cell; }
+
+  .drop-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-8); color: var(--muted); }
+  .drop-overlay.hidden { display: none; }
+  .drop-icon { font-size: var(--text-drop); opacity: 0.2; }
+  .drop-title { font-family: var(--font-display); font-size: var(--text-4xl); font-weight: 700; color: var(--text); opacity: 0.35; }
+  .drop-sub { font-size: var(--text-md); opacity: 0.3; text-align: center; }
+
+  /* Sidebar */
+  .sidebar { width: 264px; min-width: 264px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  .sidebar-section { padding: 13px; border-bottom: 1px solid var(--border); }
+  .sidebar-title { font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 9px; }
+  .measure-result { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 9px 11px; font-family: var(--font-mono); font-size: var(--text-md); }
+  .measure-result .label { color: var(--muted); font-size: var(--text-xs); margin-bottom: 2px; }
+  .measure-result .value { color: var(--gold); font-size: var(--text-3xl); font-weight: 700; word-break: break-all; }
+  .measure-result .sub { color: var(--muted); font-size: var(--text-sm); margin-top: 3px; }
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 7px; }
+  .result-cell { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 8px; font-family: var(--font-mono); }
+  .result-cell .label { color: var(--muted); font-size: var(--text-2xs); text-transform: uppercase; margin-bottom: 2px; }
+  .result-cell .val { color: var(--gold); font-size: var(--text-sm); word-break: break-all; }
+
+  .meas-list { flex: 1; overflow-y: auto; padding: var(--space-4); }
+  .meas-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 7px 9px; margin-bottom: 5px; font-size: var(--text-sm); display: flex; align-items: flex-start; gap: 7px; cursor: pointer; transition: border-color 0.15s; }
+  .meas-item:hover { border-color: var(--gold); }
+  .meas-item.selected { border-color: var(--accent); }
+  .meas-dot { width: 10px; height: 10px; border-radius: var(--radius-full); flex-shrink: 0; margin-top: 2px; }
+  .meas-info { flex: 1; min-width: 0; }
+  .meas-type { color: var(--muted); font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.07em; }
+  .meas-val { color: var(--text); font-weight: 600; font-family: var(--font-mono); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .meas-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: var(--text-lg); padding: 0 2px; line-height: 1; flex-shrink: 0; }
+  .meas-del:hover { color: var(--accent); }
+
+  .sidebar-bottom { padding: var(--space-4); display: flex; gap: var(--space-3); border-top: 1px solid var(--border); }
+  .sidebar-bottom button { flex: 1; background: none; border: 1px solid var(--border); color: var(--muted); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; }
+  .sidebar-bottom button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .hint { font-size: var(--text-xs); color: var(--muted); padding: 5px 13px 0; line-height: 1.5; }
+
+  /* Dialogs */
+  .dialog-overlay { display: none; position: fixed; inset: 0; background: var(--overlay-modal); z-index: 100; align-items: center; justify-content: center; }
+  .dialog-overlay.open { display: flex; }
+  .dialog { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-2xl); padding: 22px; width: 360px; font-size: var(--text-md); }
+  .dialog h3 { font-size: var(--text-xl); margin-bottom: 10px; color: var(--gold); }
+  .dialog p { color: var(--muted); line-height: 1.5; margin-bottom: 14px; font-size: var(--text-base); }
+  .dialog label { display: block; margin-bottom: 5px; color: var(--muted); font-size: var(--text-sm); }
+  .dialog input, .dialog select { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: var(--radius-lg); font-size: var(--text-md); margin-bottom: 12px; }
+  .dialog-btns { display: flex; gap: var(--space-4); justify-content: flex-end; margin-top: 4px; }
+  .dialog-btns button { padding: 7px 16px; border-radius: var(--radius-lg); border: none; font-size: var(--text-base); cursor: pointer; }
+  .btn-cancel { background: var(--bg); color: var(--muted); border: 1px solid var(--border) !important; }
+  .btn-ok { background: var(--accent); color: var(--white); font-weight: 600; }
+
+  /* Save dialog specifics */
+  .save-info { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 12px; margin-bottom: 14px; font-size: var(--text-sm); color: var(--muted); line-height: 1.7; }
+  .save-info strong { color: var(--text); }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-xs); }
+
+  /* Snap toolbar */
+  .snap-toolbar { display: flex; align-items: center; gap: 3px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xl); padding: var(--space-2); }
+  .snap-btn { background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer; padding: 5px 8px; border-radius: var(--radius-md); font-size: var(--text-sm); display: flex; align-items: center; gap: 3px; white-space: nowrap; transition: all 0.15s; font-family: var(--font-ui); }
+  .snap-btn:hover { background: var(--surface); color: var(--text); }
+  .snap-btn.active { background: rgba(245,166,35,0.12); color: var(--gold); border-color: rgba(245,166,35,0.4); }
+  .grid-input { width: 44px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 3px 5px; border-radius: var(--radius-sm); font-size: var(--text-sm); font-family: var(--font-mono); }
+
+  /* Per-measurement scale */
+  .meas-scale-badge { display: inline-flex; align-items: center; gap: 3px; font-size: var(--text-2xs); font-family: var(--font-mono); color: var(--gold); background: rgba(245,166,35,0.1); border: 1px solid rgba(245,166,35,0.25); border-radius: var(--radius-xs); padding: 1px 5px; margin-top: 3px; cursor: pointer; }
+  .meas-scale-badge:hover { background: var(--gold-glow); }
+  .scale-presets-section { padding: 8px 13px 10px; border-bottom: 1px solid var(--border); }
+  .preset-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: 5px; }
+  .preset-chip { background: var(--bg); border: 1px solid var(--border); color: var(--muted); border-radius: var(--radius-sm); padding: 3px 8px; font-size: var(--text-xs); font-family: var(--font-mono); cursor: pointer; }
+  .preset-chip:hover { border-color: var(--gold); color: var(--gold); }
+  .preset-chip.cur { border-color: var(--accent); color: var(--accent); }
+  .preset-chip.add-chip { border-style: dashed; }
+  .override-panel { margin-top: 8px; padding: var(--space-4); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); font-size: var(--text-sm); }
+  .override-panel .ov-label { color: var(--muted); margin-bottom: 6px; }
+  .override-row { display: flex; gap: 5px; align-items: center; }
+  .override-row input, .override-row select { flex:1; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 4px 6px; border-radius: var(--radius-sm); font-size: var(--text-sm); }
+  .override-row button { background: var(--accent); color:var(--white); border:none; border-radius:var(--radius-sm); padding: 4px 9px; font-size: var(--text-xs); cursor:pointer; }
+  .override-row .clr-btn { background: none; border: 1px solid var(--border); color: var(--muted); }
+  .override-row .clr-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* polygon close-snap indicator */
+  .snap-ring { pointer-events: none; }
+
+  /* Dimension style system */
+  .dim-style-btn { display:flex; align-items:center; gap:5px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 9px; border-radius:var(--radius-md); cursor:pointer; font-size: var(--text-sm); white-space:nowrap; }
+  .dim-style-btn:hover { background:var(--surface); }
+
+  /* Detail dialog tabs */
+  .detail-tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:14px; gap:0; }
+  .detail-tab  { flex:1; padding:var(--space-4); text-align:center; font-size: var(--text-base); cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; transition:all 0.15s; }
+  .detail-tab:hover { color:var(--text); }
+  .detail-tab.active { color:var(--gold); border-bottom-color:var(--gold); font-weight:600; }
+  .detail-pane { display:none; }
+  .detail-pane.active { display:block; }
+
+  /* Format tab controls */
+  .fmt-row  { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .fmt-label{ font-size: var(--text-sm); color:var(--muted); }
+  .fmt-opts { display:flex; gap:var(--space-2); }
+  .fmt-chip { background:var(--bg); border:1px solid var(--border); color:var(--muted); border-radius:var(--radius-sm); padding:4px 9px; font-size: var(--text-sm); cursor:pointer; transition:all 0.12s; }
+  .fmt-chip:hover { border-color:var(--gold); color:var(--gold); }
+  .fmt-chip.sel { background:var(--gold); color:var(--black); border-color:var(--gold); font-weight:700; }
+  .fmt-preview { width:100%; height:60px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-lg); margin-bottom:12px; }
+
+  /* Dim style dropdown */
+  .dim-dropdown { position:absolute; top:calc(100% + 4px); left:0; min-width:200px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:0 6px 24px var(--overlay-dark); z-index:200; overflow:hidden; display:none; }
+  .dim-dd-item { display:flex; align-items:center; gap:var(--space-4); padding:8px 12px; font-size: var(--text-sm); cursor:pointer; }
+  .dim-dd-item:hover { background:var(--surface); }
+  .dim-dd-item.active-style { background:var(--gold-subtle); }
+  .dim-dd-sep { height:1px; background:var(--border); margin:3px 0; }
+  .dim-dd-add { color:var(--gold); }
+
+  /* Scale zone UI */
+  .active-scale-chip { display:inline-flex; align-items:center; gap:5px; background:var(--accent); color:var(--white); border-radius:var(--radius-md); padding:4px 10px; font-size: var(--text-sm); font-weight:700; font-family:var(--font-mono); cursor:pointer; white-space:nowrap; }
+  .active-scale-chip:hover { opacity:0.85; }
+  .active-scale-chip.uncalibrated { background:var(--surface); color:var(--muted); border:1px dashed var(--border); }
+  .scale-chip { display:inline-flex; align-items:center; gap:var(--space-2); border-radius:var(--radius-sm); padding:3px 8px; font-size: var(--text-sm); font-family:var(--font-mono); cursor:pointer; border:2px solid transparent; white-space:nowrap; font-weight:600; }
+  .scale-chip:hover { filter:brightness(1.15); }
+  .scale-chip.active-zone { border-color:var(--white); box-shadow:0 0 0 1px var(--overlay-light); }
+  .zone-row { display:flex; align-items:center; gap:var(--space-3); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); padding:6px 8px; cursor:pointer; transition:border-color 0.15s; }
+  .zone-row:hover { border-color:var(--gold); }
+  .zone-row.active-zone { border-color:var(--accent); }
+  .zone-dot { width:10px; height:10px; border-radius: var(--radius-full); flex-shrink:0; }
+  .zone-info { flex:1; }
+  .zone-name { font-size: var(--text-sm); font-weight:600; color:var(--text); }
+  .zone-detail { font-size: var(--text-2xs); color:var(--muted); font-family:var(--font-mono); margin-top:1px; }
+  .zone-del { background:none; border:none; color:var(--muted); cursor:pointer; font-size: var(--text-md); padding:0 2px; }
+  .zone-del:hover { color:var(--accent); }
+  .zone-add-btn { display:flex; align-items:center; justify-content:center; gap:5px; background:none; border:1px dashed var(--border); color:var(--muted); border-radius:var(--radius-md); padding:5px; font-size: var(--text-sm); cursor:pointer; width:100%; margin-top:2px; }
+  .zone-add-btn:hover { border-color:var(--gold); color:var(--gold); }
+  .meas-zone-badge { display:inline-flex; align-items:center; gap:3px; font-size: var(--text-2xs); font-family:var(--font-mono); border-radius:var(--radius-xs); padding:1px 5px; margin-top:2px; cursor:pointer; font-weight:600; }
+  .meas-zone-badge:hover { filter:brightness(1.2); }
+
+  /* Scale selector dropdown */
+  .scale-selector-wrap { display:flex; align-items:center; }
+  .scale-selector-btn { display:flex; align-items:center; gap:5px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:5px 9px; border-radius:var(--radius-md); cursor:pointer; font-size: var(--text-sm); font-family:var(--font-mono); font-weight:600; white-space:nowrap; }
+  .scale-selector-btn:hover { background:var(--surface); }
+  .scale-dropdown { position:absolute; top:calc(100% + 4px); left:0; min-width:180px; background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-lg); box-shadow:0 6px 24px var(--overlay-dark); z-index:200; overflow:hidden; }
+  .scale-dropdown-item { display:flex; align-items:center; gap:var(--space-4); padding:8px 12px; font-size: var(--text-sm); cursor:pointer; transition:background 0.12s; }
+  .scale-dropdown-item:hover { background:var(--surface); }
+  .scale-dropdown-item.active-zone { background:rgba(233,69,96,0.08); }
+  .scale-dropdown-item .sd-dot { width:8px; height:8px; border-radius: var(--radius-full); flex-shrink:0; }
+  .scale-dropdown-item .sd-name { flex:1; color:var(--text); font-weight:600; }
+  .scale-dropdown-item .sd-ratio { font-family:var(--font-mono); font-size: var(--text-xs); color:var(--muted); }
+  .scale-dropdown-item .sd-check { font-size: var(--text-base); color:var(--accent); margin-left:auto; }
+  .scale-dropdown-sep { height:1px; background:var(--border); margin:3px 0; }
+  .scale-dropdown-add { color:var(--gold); font-size: var(--text-sm); }
+  .scale-dropdown-add:hover { background:var(--surface); }
+
+  /* Floating panel */
+  #floatPanel {
+    position: absolute; top: 16px; left: 16px;
+    width: 250px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--radius-xl);
+    box-shadow: 0 6px 28px var(--overlay-mid);
+    z-index: 20; user-select: none; overflow: hidden;
+  }
+  #floatPanelHeader {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; background: var(--surface); cursor: grab;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--gold);
+  }
+  #floatPanelHeader:active { cursor: grabbing; }
+
+  /* Groups */
+  .groups-section { padding:8px 13px 10px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .groups-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .group-add-btn { background:none; border:1px solid var(--border); color:var(--muted); border-radius:var(--radius-sm); padding:2px 8px; font-size: var(--text-xs); cursor:pointer; }
+  .group-add-btn:hover { border-color:var(--gold); color:var(--gold); }
+  .active-group-chip { border-radius:var(--radius-sm); padding:3px 9px; font-size: var(--text-xs); font-weight:700; font-family:var(--font-mono); cursor:pointer; border:2px solid transparent; white-space:nowrap; transition:all 0.15s; }
+  .active-group-chip:hover { filter:brightness(1.15); }
+  .active-group-chip.selected { border-color:var(--white); box-shadow:0 0 0 1px rgba(255,255,255,0.2); }
+  .group-row { display:flex; align-items:center; gap:var(--space-3); padding:5px 7px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg); margin-bottom:4px; cursor:pointer; transition:border-color 0.15s; }
+  .group-row:hover { border-color:var(--gold); }
+  .group-row.active-group { border-color:var(--accent); background:rgba(233,69,96,0.06); }
+  .group-dot { width:9px; height:9px; border-radius: var(--radius-full); flex-shrink:0; }
+  .group-name-text { flex:1; font-size: var(--text-sm); font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .group-name-text.editing { outline:none; border-bottom:1px solid var(--gold); color:var(--gold); }
+  .group-count { font-size: var(--text-2xs); color:var(--muted); font-family:var(--font-mono); white-space:nowrap; }
+  .group-eye { background:none; border:none; cursor:pointer; font-size: var(--text-md); padding:0 1px; opacity:0.5; }
+  .group-eye:hover { opacity:1; }
+  .group-eye.hidden-group { opacity:0.25; }
+  .group-del { background:none; border:none; color:var(--muted); cursor:pointer; font-size: var(--text-md); padding:0 1px; }
+  .group-del:hover { color:var(--accent); }
+  .group-heading { display:flex; align-items:center; gap:var(--space-3); padding:5px 4px 3px; margin-top:4px; border-bottom:1px solid var(--border); cursor:pointer; }
+  .group-heading-dot { width:7px; height:7px; border-radius: var(--radius-full); flex-shrink:0; }
+  .group-heading-name { font-size: var(--text-xs); font-weight:700; text-transform:uppercase; letter-spacing:0.07em; flex:1; }
+  .group-heading-count { font-size: var(--text-2xs); color:var(--muted); font-family:var(--font-mono); }
+  .group-heading-toggle { font-size: var(--text-xs); color:var(--muted); }
+  .solo-heading { background:rgba(245,166,35,0.06); border-radius:var(--radius-sm); }
+  .group-badge { display:inline-flex; align-items:center; gap:3px; font-size: var(--text-2xs); border-radius:var(--radius-xs); padding:1px 5px; margin-top:2px; cursor:pointer; font-weight:600; font-family:var(--font-mono); }
+  .group-badge:hover { filter:brightness(1.15); }
+</style>
+</head>
+<!-- ═══ SITE HEADER ═══════════════════════════════════════════════ -->
+<header class="site-header" id="site-header"></header>
+<script src="../../assets/js/nav.js"></script>
+
+<!-- ═══ MEASURE TOOLBAR ════════════════════════════════════════════ -->
+<div class="measure-toolbar">
+  <div class="toolbar">
+    <button class="tool-btn" id="btnSelect"  title="Select & move (V)"   onclick="setTool('select')">↖ Select</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn active" id="btnLine"    title="Line (L)"          onclick="setTool('line')">📏 Line</button>
+    <button class="tool-btn"        id="btnRect"    title="Rectangle (R)"     onclick="setTool('rect')">▭ Rect</button>
+    <button class="tool-btn"        id="btnCircle"  title="Circle (C)"        onclick="setTool('circle')">○ Circle</button>
+    <button class="tool-btn"        id="btnAngle"   title="Angle (A)"         onclick="setTool('angle')">∠ Angle</button>
+    <button class="tool-btn"        id="btnPolygon" title="Polygon (P)"       onclick="setTool('polygon')">⬡ Polygon</button>
+    <button class="tool-btn"        id="btnChain"   title="Chain/Running dimension (H)" onclick="setTool('chain')">⛓ Chain</button>
+    <button class="tool-btn"        id="btnCount"   title="Count items (N)"   onclick="setTool('count')">⊕ Count</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" id="btnCalibrate" onclick="openCalibDialog()" title="Calibrate scale">⚖ Calibrate</button>
+    <div class="scale-selector-wrap" id="scaleSelectorWrap" style="display:none;position:relative">
+      <button class="scale-selector-btn" id="scaleSelectorBtn" onclick="toggleScaleDropdown()" title="Switch active scale zone">
+        <span id="scaleSelectorDot" style="width:8px;height:8px;border-radius: var(--radius-full);display:inline-block;flex-shrink:0"></span>
+        <span id="scaleSelectorLabel">1:100</span>
+        <span style="font-size: var(--text-2xs);color:var(--muted)">▾</span>
+      </button>
+      <div class="scale-dropdown" id="scaleDropdown" style="display:none">
+        <div id="scaleDropdownList"></div>
+        <div class="scale-dropdown-sep"></div>
+        <div class="scale-dropdown-item scale-dropdown-add" onclick="closeScaleDropdown();openAddZoneDialog()">+ Add scale zone</div>
+        <div class="scale-dropdown-item scale-dropdown-add" onclick="closeScaleDropdown();openCalibDialog()">⚖ Recalibrate</div>
+      </div>
+    </div>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" id="btnUndo" onclick="undo()" title="Nothing to undo" style="opacity:0.4" disabled>↩ Undo</button>
+    <button class="tool-btn" id="btnRedo" onclick="redo()" title="Nothing to redo" style="opacity:0.4" disabled>↪ Redo</button>
+  </div>
+
+  <div class="zoom-group">
+    <button onclick="adjustZoom(-0.25)">−</button>
+    <span id="zoomLabel">100%</span>
+    <button onclick="adjustZoom(0.25)">+</button>
+  </div>
+
+  <div class="page-nav" id="pageNav" style="display:none">
+    <button id="prevPage" onclick="changePage(-1)">‹</button>
+    <span id="pageInfo">1 / 1</span>
+    <button id="nextPage" onclick="changePage(1)">›</button>
+  </div>
+
+  <!-- Hidden inputs kept for backward compat with fmt/getScale/getUnit -->
+  <input type="hidden" id="scaleVal" value="1">
+  <input type="hidden" id="unitSel" value="mm">
+
+  <div class="snap-toolbar">
+    <span style="font-size: var(--text-xs);color:var(--muted);padding:0 4px">Snap:</span>
+    <button class="snap-btn"        id="snapPoint" title="Snap to measurement nodes" onclick="toggleSnap('point')">⦿ Node</button>
+    <button class="snap-btn active" id="snapEdge"  title="Snap to detected edges"    onclick="toggleSnap('edge')">⊢ Edge</button>
+    <button class="snap-btn"        id="snapGrid"  title="Snap to grid"              onclick="toggleSnap('grid')">⊞ Grid</button>
+    <input class="grid-input" id="gridSize" type="number" value="20" min="2" max="500" title="Grid spacing (PDF px)" oninput="rebuildGrid()" style="display:none">
+  </div>
+
+  <div class="spacer"></div>
+
+  <button class="hdr-btn save" id="btnSave" onclick="quickSave()" title="Save (overwrite current job)" style="display:none">💾 Save</button>
+  <button class="hdr-btn" onclick="openSaveDialog()" title="Save as new .pmjob file">💾 Save As…</button>
+  <button class="hdr-btn" onclick="(function(){var i=document.getElementById('jobFileInput');i.value='';i.click();})()" title="Load saved job">📂 Load Job</button>
+  <input type="file" id="jobFileInput" accept=".pmjob" style="display:none">
+
+  <button class="hdr-btn" onclick="(function(){var i=document.getElementById('fileInput');i.value='';i.click();})()" title="Open PDF">📄 Open PDF</button>
+  <input type="file" id="fileInput" accept="application/pdf" style="display:none">
+</div>
+
+<div class="main">
+  <div class="canvas-wrap" id="canvasWrap">
+    <div class="drop-overlay" id="dropOverlay">
+      <div class="drop-icon">📐</div>
+      <div class="drop-title">Open a PDF to measure</div>
+      <div class="drop-sub">Click "Open PDF", drag & drop a PDF, or load a saved .pmjob file</div>
+    </div>
+    <div class="canvas-container" id="canvasContainer" style="display:none">
+      <canvas id="pdfCanvas"></canvas>
+      <canvas id="measureCanvas"></canvas>
+      <canvas id="interactCanvas"></canvas>
+    </div>
+    <!-- Floating current measurement panel -->
+    <div id="floatPanel" style="display:none">
+      <div id="floatPanelHeader">
+        <span>📐 Current Measurement</span>
+        <button onclick="toggleFloatPanel()" title="Hide" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size: var(--text-xl);line-height:1">×</button>
+      </div>
+      <div style="padding:10px 12px 4px">
+        <div style="font-size: var(--text-xs);color:var(--muted);margin-bottom:2px">Value</div>
+        <div class="value" id="resultMain" style="font-size: var(--text-4xl);font-weight:700;color:var(--gold);font-family:var(--font-mono)">—</div>
+        <div id="resultSub" style="font-size: var(--text-sm);color:var(--muted);margin-top:2px"></div>
+      </div>
+      <div class="result-grid" id="resultGrid" style="padding:0 12px 6px;margin-top:4px"></div>
+      <div id="toolHint" style="font-size: var(--text-xs);color:var(--muted);padding:0 12px 10px;line-height:1.5">Draw a line to measure distance.</div>
+    </div>
+    <button id="floatShowBtn" onclick="toggleFloatPanel()"
+      style="display:none;position:absolute;top:12px;left:12px;background:var(--panel);border:1px solid var(--border);color:var(--muted);border-radius:var(--radius-lg);padding:5px 11px;font-size: var(--text-sm);cursor:pointer;z-index:20">
+      📐 Show Panel
+    </button>
+  </div>
+
+  <div class="sidebar">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 13px 6px;border-bottom:1px solid var(--border);flex-shrink:0">
+      <div class="sidebar-title" style="margin:0">Measurements</div>
+      <button class="group-add-btn" onclick="addGroup()">+ New Group</button>
+    </div>
+    <div class="meas-list" id="measList" style="flex:1;overflow-y:auto"></div>
+    <div class="sidebar-bottom">
+      <button onclick="clearAll()">🗑 Clear All</button>
+      <button onclick="exportCSV()">↓ Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calibrate dialog -->
+<div class="dialog-overlay" id="calibDialog">
+  <div class="dialog">
+    <h3>⚖ Calibrate Base Scale</h3>
+    <p>Draw a line on a known dimension, pick it below, enter the real-world length. This sets your <strong>master scale</strong> — all scale zones (1:20, 1:50 etc.) are derived from it automatically.</p>
+    <label>Reference line</label>
+    <select id="calibLinePicker" onchange="calibPickerChanged()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md);margin-bottom:12px">
+      <option value="last">Last drawn line</option>
+      <option value="manual">Enter px manually</option>
+    </select>
+    <label>Line length (PDF px)</label>
+    <input type="number" id="calibPx" placeholder="Select a line above…" step="any" min="0.0001">
+    <label>Known real-world length</label>
+    <input type="number" id="calibReal" placeholder="e.g. 5000" min="0.0001" step="any">
+    <label>Unit</label>
+    <select id="calibUnit">
+      <option value="mm">mm</option><option value="cm">cm</option>
+      <option value="m">m</option><option value="in">in</option><option value="ft">ft</option>
+    </select>
+    <label>This dimension is at scale</label>
+    <select id="calibAtScale" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md);margin-bottom:12px">
+      <option value="1">1:1 (full size)</option>
+      <option value="5">1:5</option>
+      <option value="10">1:10</option>
+      <option value="20">1:20</option>
+      <option value="50">1:50</option>
+      <option value="100" selected>1:100</option>
+      <option value="200">1:200</option>
+      <option value="500">1:500</option>
+      <option value="1000">1:1000</option>
+      <option value="custom">Custom ratio…</option>
+    </select>
+    <input type="number" id="calibCustomRatio" placeholder="Enter ratio denominator e.g. 75 for 1:75" style="display:none;width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md);margin-bottom:12px" min="0.0001" step="any">
+    <label>Name this scale zone</label>
+    <input type="text" id="calibZoneName" placeholder="e.g. Main Plan 1:100">
+    <div class="dialog-btns">
+      <button class="btn-cancel" onclick="closeCalibDialog()">Cancel</button>
+      <button class="btn-ok" onclick="applyCalib()">Save Scale Zone</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add ratio zone dialog -->
+<div class="dialog-overlay" id="addZoneDialog">
+  <div class="dialog">
+    <h3>➕ Add Scale Zone</h3>
+    <p>Add a new ratio zone derived from your calibrated master scale. No re-drawing needed — just enter the ratio.</p>
+    <label>Drawing ratio</label>
+    <select id="addZoneRatio" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md);margin-bottom:12px" onchange="addZoneRatioChanged()">
+      <option value="1">1:1</option>
+      <option value="2">1:2</option>
+      <option value="5">1:5</option>
+      <option value="10">1:10</option>
+      <option value="20">1:20</option>
+      <option value="50">1:50</option>
+      <option value="100">1:100</option>
+      <option value="200">1:200</option>
+      <option value="500">1:500</option>
+      <option value="1000">1:1000</option>
+      <option value="custom">Custom…</option>
+    </select>
+    <input type="number" id="addZoneCustomRatio" placeholder="Ratio denominator e.g. 75" style="display:none;width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md);margin-bottom:12px" min="0.0001" step="any">
+    <label>Zone name</label>
+    <input type="text" id="addZoneName" placeholder="e.g. Detail A 1:20">
+    <div id="addZonePreview" style="font-size: var(--text-sm);color:var(--gold);font-family:var(--font-mono);margin-bottom:12px;min-height:16px"></div>
+    <div class="dialog-btns">
+      <button class="btn-cancel" onclick="closeAddZoneDialog()">Cancel</button>
+      <button class="btn-ok" onclick="confirmAddZone()">Add Zone</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign zone dialog -->
+<div class="dialog-overlay" id="overrideDialog">
+  <div class="dialog">
+    <h3>📐 Assign Scale Zone</h3>
+    <p>Choose which scale zone this measurement belongs to. The value recalculates instantly.</p>
+    <div id="assignZonePicker" style="display:flex;flex-direction:column;gap:var(--space-3);margin-bottom:16px"></div>
+    <div class="dialog-btns">
+      <button class="btn-cancel" onclick="closeOverrideDialog()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unified measurement detail dialog -->
+<div class="dialog-overlay" id="measDetailDialog">
+  <div class="dialog" style="width:420px;max-height:90vh;overflow-y:auto">
+    <h3 id="measDetailTitle">📐 Measurement Detail</h3>
+
+    <!-- Tabs -->
+    <div class="detail-tabs">
+      <div class="detail-tab active" onclick="switchDetailTab('measure')">📐 Measurement</div>
+      <div class="detail-tab"        onclick="switchDetailTab('format')">✏ Format</div>
+    </div>
+
+    <!-- Tab 1: Measurement -->
+    <div class="detail-pane active" id="detailPaneMeasure">
+      <div id="measDetailValue" style="font-size: var(--text-4xl);font-weight:700;font-family:var(--font-mono);color:var(--gold);margin-bottom:4px"></div>
+      <div id="measDetailSub"   style="font-size: var(--text-sm);color:var(--muted);margin-bottom:16px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-bottom:16px" id="measDetailGrid"></div>
+      <label style="font-size: var(--text-sm);color:var(--muted);display:block;margin-bottom:5px">Scale Zone</label>
+      <div id="measDetailZonePicker" style="display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:14px;max-height:120px;overflow-y:auto"></div>
+      <label style="font-size: var(--text-sm);color:var(--muted);display:block;margin-bottom:5px">Group</label>
+      <div id="measDetailGroupPicker" style="display:flex;flex-direction:column;gap:var(--space-2);margin-bottom:8px;max-height:120px;overflow-y:auto"></div>
+      <div id="countLabelSection" style="display:none;margin-bottom:14px">
+        <label style="font-size: var(--text-sm);color:var(--muted);display:block;margin-bottom:5px">Count label (e.g. "columns", "windows")</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="countLabelInput" placeholder="e.g. columns" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:var(--radius-lg);font-size: var(--text-md)">
+          <button onclick="applyCountLabel()" style="background:var(--accent);color:var(--white);border:none;border-radius:var(--radius-lg);padding:7px 12px;font-size: var(--text-base);cursor:pointer">Set</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Format -->
+    <div class="detail-pane" id="detailPaneFormat">
+      <!-- Mini preview -->
+      <canvas id="fmtPreviewCanvas" class="fmt-preview" width="380" height="60"></canvas>
+
+      <!-- Dimension format controls (line, rect, circle, angle, chain, polygon) -->
+      <div id="fmtDimControls">
+        <!-- Terminator -->
+        <div class="fmt-row">
+          <span class="fmt-label">Line ends</span>
+          <div class="fmt-opts" id="fmtTerminator">
+            <span class="fmt-chip" data-val="none"   onclick="setFmt('terminator','none')">None</span>
+            <span class="fmt-chip" data-val="arrow"  onclick="setFmt('terminator','arrow')">Arrow →</span>
+            <span class="fmt-chip" data-val="arch"   onclick="setFmt('terminator','arch')">Arch |→|</span>
+            <span class="fmt-chip" data-val="slash"  onclick="setFmt('terminator','slash')">Slash /</span>
+            <span class="fmt-chip" data-val="dot"    onclick="setFmt('terminator','dot')">Dot ●</span>
+          </div>
+        </div>
+        <!-- Extension lines -->
+        <div class="fmt-row" id="fmtExtRow">
+          <span class="fmt-label">Extension lines</span>
+          <div class="fmt-opts" id="fmtExtLines">
+            <span class="fmt-chip" data-val="show" onclick="setFmt('extLines','show')">Show</span>
+            <span class="fmt-chip" data-val="hide" onclick="setFmt('extLines','hide')">Hide</span>
+          </div>
+        </div>
+        <!-- Text position -->
+        <div class="fmt-row">
+          <span class="fmt-label">Text position</span>
+          <div class="fmt-opts" id="fmtTextPos">
+            <span class="fmt-chip" data-val="above"  onclick="setFmt('textPos','above')">Above</span>
+            <span class="fmt-chip" data-val="inline" onclick="setFmt('textPos','inline')">Inline</span>
+            <span class="fmt-chip" data-val="below"  onclick="setFmt('textPos','below')">Below</span>
+          </div>
+        </div>
+        <!-- Text rotation -->
+        <div class="fmt-row">
+          <span class="fmt-label">Text rotation</span>
+          <div class="fmt-opts" id="fmtTextRot">
+            <span class="fmt-chip" data-val="horiz"  onclick="setFmt('textRot','horiz')">Horizontal</span>
+            <span class="fmt-chip" data-val="follow" onclick="setFmt('textRot','follow')">Follow line</span>
+          </div>
+        </div>
+        <!-- Text size -->
+        <div class="fmt-row">
+          <span class="fmt-label">Text size</span>
+          <div class="fmt-opts" id="fmtTextSize">
+            <span class="fmt-chip" data-val="s" onclick="setFmt('textSize','s')">Small</span>
+            <span class="fmt-chip" data-val="m" onclick="setFmt('textSize','m')">Medium</span>
+            <span class="fmt-chip" data-val="l" onclick="setFmt('textSize','l')">Large</span>
+          </div>
+        </div>
+        <!-- Arrow size -->
+        <div class="fmt-row" id="fmtArrowSizeRow">
+          <span class="fmt-label">Arrow size</span>
+          <div class="fmt-opts" id="fmtArrowSize">
+            <span class="fmt-chip" data-val="s" onclick="setFmt('arrowSize','s')">Small</span>
+            <span class="fmt-chip" data-val="m" onclick="setFmt('arrowSize','m')">Medium</span>
+            <span class="fmt-chip" data-val="l" onclick="setFmt('arrowSize','l')">Large</span>
+          </div>
+        </div>
+        <!-- Line style -->
+        <div class="fmt-row">
+          <span class="fmt-label">Line style</span>
+          <div class="fmt-opts" id="fmtLineStyle">
+            <span class="fmt-chip" data-val="solid"  onclick="setFmt('lineStyle','solid')">Solid</span>
+            <span class="fmt-chip" data-val="dashed" onclick="setFmt('lineStyle','dashed')">Dashed</span>
+            <span class="fmt-chip" data-val="dotted" onclick="setFmt('lineStyle','dotted')">Dotted</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Count-specific format controls -->
+      <div id="fmtCountControls" style="display:none">
+        <!-- Marker shape -->
+        <div class="fmt-row">
+          <span class="fmt-label">Marker shape</span>
+          <div class="fmt-opts" id="fmtCountShape">
+            <span class="fmt-chip" data-val="circle"  onclick="setCountFmt('shape','circle')">● Circle</span>
+            <span class="fmt-chip" data-val="square"  onclick="setCountFmt('shape','square')">■ Square</span>
+            <span class="fmt-chip" data-val="diamond" onclick="setCountFmt('shape','diamond')">◆ Diamond</span>
+            <span class="fmt-chip" data-val="dot"     onclick="setCountFmt('shape','dot')">· Dot</span>
+          </div>
+        </div>
+        <!-- Marker size -->
+        <div class="fmt-row">
+          <span class="fmt-label">Marker size</span>
+          <div class="fmt-opts" id="fmtCountSize">
+            <span class="fmt-chip" data-val="s" onclick="setCountFmt('markerSize','s')">Small</span>
+            <span class="fmt-chip" data-val="m" onclick="setCountFmt('markerSize','m')">Medium</span>
+            <span class="fmt-chip" data-val="l" onclick="setCountFmt('markerSize','l')">Large</span>
+          </div>
+        </div>
+        <!-- Number display -->
+        <div class="fmt-row">
+          <span class="fmt-label">Show number</span>
+          <div class="fmt-opts" id="fmtCountNum">
+            <span class="fmt-chip" data-val="show" onclick="setCountFmt('showNum','show')">Show</span>
+            <span class="fmt-chip" data-val="hide" onclick="setCountFmt('showNum','hide')">Hide</span>
+          </div>
+        </div>
+        <!-- Number style -->
+        <div class="fmt-row">
+          <span class="fmt-label">Number style</span>
+          <div class="fmt-opts" id="fmtCountNumStyle">
+            <span class="fmt-chip" data-val="1"   onclick="setCountFmt('numStyle','1')">1, 2, 3</span>
+            <span class="fmt-chip" data-val="A"   onclick="setCountFmt('numStyle','A')">A, B, C</span>
+            <span class="fmt-chip" data-val="i"   onclick="setCountFmt('numStyle','i')">i, ii, iii</span>
+          </div>
+        </div>
+        <p style="font-size: var(--text-xs);color:var(--muted);margin-top:8px;line-height:1.5">
+          Set the count label (e.g. "columns") in the Measurement tab.
+        </p>
+      </div>
+    </div>
+
+    <div class="dialog-btns" style="margin-top:14px">
+      <button class="btn-cancel" onclick="closeMeasDetailDialog()">Close</button>
+      <button class="btn-ok" style="background:var(--accent)" onclick="deleteMeasFromDetail()">🗑 Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Save Job dialog -->
+<div class="dialog-overlay" id="saveDialog">
+  <div class="dialog">
+    <h3>💾 Save As…</h3>
+    <p>Saves all measurements and a copy of the PDF into a <strong>.pmjob</strong> file. Once saved, use the <strong>Save</strong> button to overwrite it instantly.</p>
+    <div class="save-info" id="saveInfo">—</div>
+    <label>Job name</label>
+    <input type="text" id="jobName" placeholder="my-measurement-job">
+    <div class="dialog-btns">
+      <button class="btn-cancel" onclick="closeSaveDialog()">Cancel</button>
+      <button class="btn-ok" onclick="doSaveJob()">Download .pmjob</button>
+    </div>
+  </div>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let pdfDoc       = null;
+let pdfRawB64    = '';        // base64 of the original PDF bytes — for Save Job
+let pdfFileName  = 'document.pdf';
+let currentJobName = '';      // set after load/save; enables quick-save
+let pageNum      = 1, totalPages = 1;
+let zoom         = 1.0;
+let currentTool  = 'line';
+let measurements = [];        // all coords in PDF-space (zoom-independent)
+let selectedIdx  = -1;
+let drawing      = false;
+let startPdf     = {x:0,y:0};
+let livePdf      = {x:0,y:0};
+let anglePoints  = [];        // PDF-space clicks for angle tool
+let polyPoints   = [];        // PDF-space clicks for polygon tool (in-progress)
+let chainPoints  = [];        // PDF-space clicks for chain tool (in-progress)
+let countPoints  = [];        // PDF-space clicks for count tool (in-progress — committed per click)
+let lastLinePdfPx = 0;        // calibration
+
+// ─────────────────────────────────────────────
+//  Snap state
+// ─────────────────────────────────────────────
+const snapModes = { point: false, edge: true, grid: false };
+const SNAP_RADIUS_SCREEN = 16;  // pixels on screen within which snap fires
+let edgePoints   = [];   // cached edge pixel coords in PDF space (built after renderPage)
+let gridSpacing  = 20;   // PDF px
+let snapResult   = null; // { x, y, type } — current live snap target, or null
+let startSnapResult = null; // frozen snap at the start point of a draw, shown throughout drag
+
+// Select / drag
+let dragActive   = false;
+let dragStartPdf = {x:0,y:0};
+let dragSnapshot = null;
+let hoverIdx     = -1;
+let hoverNodeIdx = -1;   // node index hovered on selected shape (-1 = none)
+let dragNodeIdx  = -1;   // -1 = whole shape drag, ≥0 = node drag
+
+const COLORS = ['#e94560','#53d8fb','#f4c842','#4eff91','#ff7c4d','#d06ef9','#c084fc','#fb923c'];
+let colorIdx = 0;
+
+// ── Undo / Redo stack ────────────────────────────────────────────
+const UNDO_LIMIT = 50;
+let undoStack = [];
+let redoStack = [];
+
+function saveUndo() {
+  undoStack.push({
+    measurements: JSON.parse(JSON.stringify(measurements)),
+    groups:       JSON.parse(JSON.stringify(groups)),
+    colorIdx,
+    activeGroupId,
+    activeZoneId,
+  });
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+  redoStack = []; // any new action clears redo
+  updateUndoBtns();
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  // Push current state to redo before restoring
+  redoStack.push({
+    measurements: JSON.parse(JSON.stringify(measurements)),
+    groups:       JSON.parse(JSON.stringify(groups)),
+    colorIdx,
+    activeGroupId,
+    activeZoneId,
+  });
+  const snap = undoStack.pop();
+  restoreSnap(snap);
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  // Push current state to undo before restoring
+  undoStack.push({
+    measurements: JSON.parse(JSON.stringify(measurements)),
+    groups:       JSON.parse(JSON.stringify(groups)),
+    colorIdx,
+    activeGroupId,
+    activeZoneId,
+  });
+  const snap = redoStack.pop();
+  restoreSnap(snap);
+}
+
+function restoreSnap(snap) {
+  measurements  = snap.measurements;
+  groups        = snap.groups;
+  colorIdx      = snap.colorIdx;
+  activeGroupId = snap.activeGroupId;
+  activeZoneId  = snap.activeZoneId;
+  selectedIdx   = -1;
+  renderGroupList(); updateMeasList(); redraw();
+  updateUndoBtns();
+}
+
+function updateUndoBtns() {
+  const u = document.getElementById('btnUndo');
+  const r = document.getElementById('btnRedo');
+  if (u) {
+    u.disabled = !undoStack.length;
+    u.title    = undoStack.length ? `Undo (${undoStack.length})` : 'Nothing to undo';
+    u.style.opacity = undoStack.length ? '1' : '0.4';
+  }
+  if (r) {
+    r.disabled = !redoStack.length;
+    r.title    = redoStack.length ? `Redo (${redoStack.length})` : 'Nothing to redo';
+    r.style.opacity = redoStack.length ? '1' : '0.4';
+  }
+}
+
+// Keep old name as alias so existing calls still work
+function updateUndoBtn() { updateUndoBtns(); }
+
+// ─────────────────────────────────────────────
+//  Dimension Styles
+// ─────────────────────────────────────────────
+// A style defines how a measurement is drawn
+// fmt object: { terminator, extLines, textPos, textRot, textSize, arrowSize, lineStyle }
+
+const DEFAULT_FMT = {
+  terminator: 'none',   // none | arrow | arch | slash | dot
+  extLines:   'show',   // show | hide  (only relevant for arch)
+  textPos:    'above',  // above | inline | below
+  textRot:    'horiz',  // horiz | follow
+  textSize:   'm',      // s | m | l
+  arrowSize:  'm',      // s | m | l
+  lineStyle:  'solid',  // solid | dashed | dotted
+};
+
+const ARCH_FMT = {
+  terminator: 'arch',
+  extLines:   'show',
+  textPos:    'above',
+  textRot:    'horiz',
+  textSize:   'm',
+  arrowSize:  'm',
+  lineStyle:  'solid',
+};
+
+let dimStyles = [
+  { id:'style_plain', name:'Plain',        fmt: { ...DEFAULT_FMT } },
+  { id:'style_arch',  name:'Architectural',fmt: { ...ARCH_FMT   } },
+  { id:'style_eng',   name:'Engineering',  fmt: { terminator:'arrow', extLines:'show', textPos:'inline', textRot:'follow', textSize:'m', arrowSize:'m', lineStyle:'solid' } },
+];
+let activeDimStyleId = 'style_plain';
+let dimStyleIdCounter = 10;
+
+// Per-measurement format: stored in m.fmt — null means use active style at draw time
+// currentFmt is the working copy being edited in the format tab
+let currentFmt = null;   // working copy for format tab editing
+
+function getMeasFmt(m) {
+  if (m.fmt) return { ...DEFAULT_FMT, ...m.fmt };
+  const s = dimStyles.find(s => s.id === activeDimStyleId) || dimStyles[0];
+  return { ...DEFAULT_FMT, ...(s ? s.fmt : {}) };
+}
+
+// ── Drawing with dimension styles ─────────────────────────────────
+
+const ARROW_SIZES = { s:6, m:10, l:15 };
+const TEXT_SIZES  = { s:9,  m:11, l:14 };
+const EXT_OVERSHOOT = 6;  // px beyond arrow tip
+
+function drawDimLine(ctx, x1, y1, x2, y2, text, color, fmt) {
+  const ang   = Math.atan2(y2-y1, x2-x1);
+  const perp  = ang + Math.PI/2;  // 90° CCW — points "above" the line
+  const aSize = ARROW_SIZES[fmt.arrowSize] || 10;
+  const tSize = TEXT_SIZES[fmt.textSize]   || 11;
+
+  // Build dash pattern once — used on the main line only
+  const dash = fmt.lineStyle === 'dashed' ? [8,4]
+             : fmt.lineStyle === 'dotted' ? [2,4]
+             : [];
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = 1.5;
+
+  // ── Arch: |←————————→| ──────────────────────────────────────────
+  // Extension lines are solid; main dim line uses chosen style; arrows inward
+  if (fmt.terminator === 'arch') {
+    const extLen = aSize + EXT_OVERSHOOT;
+    const offset = EXT_OVERSHOOT * 0.6;
+    const ox = Math.cos(perp) * offset, oy = Math.sin(perp) * offset;
+    const dx1 = x1+ox, dy1 = y1+oy, dx2 = x2+ox, dy2 = y2+oy;
+
+    // Extension lines — always solid, perpendicular at each endpoint
+    ctx.setLineDash([]);
+    if (fmt.extLines === 'show') {
+      [[x1,y1],[x2,y2]].forEach(([ex,ey]) => {
+        ctx.beginPath();
+        ctx.moveTo(ex + Math.cos(perp)*-4,      ey + Math.sin(perp)*-4);
+        ctx.lineTo(ex + Math.cos(perp)*extLen,   ey + Math.sin(perp)*extLen);
+        ctx.stroke();
+      });
+    }
+
+    // Main dimension line — apply chosen line style
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(dx1, dy1); ctx.lineTo(dx2, dy2); ctx.stroke();
+
+    // Inward arrows: tip at each end, body points INWARD toward centre
+    // Left end (dx1): arrow points RIGHT (→) = ang; Right end (dx2): points LEFT (←) = ang+PI
+    ctx.setLineDash([]);
+    drawArrow(ctx, dx1, dy1, ang+Math.PI, aSize, color);  // tip at left, body goes right
+    drawArrow(ctx, dx2, dy2, ang,          aSize, color);  // tip at right, body goes left
+
+    drawDimText(ctx, (dx1+dx2)/2, (dy1+dy2)/2, text, ang, tSize, fmt.textPos, fmt.textRot, color, perp);
+
+  // ── Arrow: outward ───────────────────────────────────────────────
+  } else if (fmt.terminator === 'arrow') {
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Outward: arrow at x1 points LEFT (away from x2) → ang+PI; at x2 points RIGHT → ang
+    drawArrow(ctx, x1, y1, ang+Math.PI, aSize, color);
+    drawArrow(ctx, x2, y2, ang,          aSize, color);
+    drawDimText(ctx, (x1+x2)/2, (y1+y2)/2, text, ang, tSize, fmt.textPos, fmt.textRot, color, perp);
+
+  // ── Slash ────────────────────────────────────────────────────────
+  } else if (fmt.terminator === 'slash') {
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    [[x1,y1],[x2,y2]].forEach(([cx,cy]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang+Math.PI/4)*aSize, cy + Math.sin(ang+Math.PI/4)*aSize);
+      ctx.lineTo(cx - Math.cos(ang+Math.PI/4)*aSize, cy - Math.sin(ang+Math.PI/4)*aSize);
+      ctx.stroke();
+    });
+    drawDimText(ctx, (x1+x2)/2, (y1+y2)/2, text, ang, tSize, fmt.textPos, fmt.textRot, color, perp);
+
+  // ── Dot ──────────────────────────────────────────────────────────
+  } else if (fmt.terminator === 'dot') {
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    [[x1,y1],[x2,y2]].forEach(([cx,cy]) => {
+      ctx.beginPath(); ctx.arc(cx, cy, aSize/2.5, 0, Math.PI*2); ctx.fill();
+    });
+    drawDimText(ctx, (x1+x2)/2, (y1+y2)/2, text, ang, tSize, fmt.textPos, fmt.textRot, color, perp);
+
+  // ── Plain (perpendicular ticks) ───────────────────────────────────
+  } else {
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+    [[x1,y1],[x2,y2]].forEach(([cx,cy]) => {
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(perp)*6, cy + Math.sin(perp)*6);
+      ctx.lineTo(cx - Math.cos(perp)*6, cy - Math.sin(perp)*6);
+      ctx.stroke();
+    });
+    drawDimText(ctx, (x1+x2)/2, (y1+y2)/2, text, ang, tSize, fmt.textPos, fmt.textRot, color, perp);
+  }
+
+  ctx.restore();
+}
+
+function drawArrow(ctx, tipX, tipY, ang, size, color) {
+  // Draws a filled arrow with tip at (tipX,tipY), body extending in direction ang
+  ctx.save();
+  ctx.translate(tipX, tipY);
+  ctx.rotate(ang);
+  ctx.fillStyle = color;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);                      // tip
+  ctx.lineTo(-size, -size * 0.35);       // upper base
+  ctx.lineTo(-size,  size * 0.35);       // lower base
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawDimText(ctx, cx, cy, text, lineAng, tSize, textPos, textRot, color, perp) {
+  ctx.save();
+  ctx.font = `${tSize}px Courier New, monospace`;
+  const w   = ctx.measureText(text).width;
+  const off = tSize + 4;
+
+  // Canvas Y increases downward, so "above" a horizontal line = negative Y = subtract perp
+  let tx = cx, ty = cy;
+  if (textPos === 'above') {
+    tx = cx - Math.cos(perp) * off;
+    ty = cy - Math.sin(perp) * off;
+  } else if (textPos === 'below') {
+    tx = cx + Math.cos(perp) * off;
+    ty = cy + Math.sin(perp) * off;
+  }
+
+  ctx.translate(tx, ty);
+  if (textRot === 'follow') {
+    let a = lineAng;
+    if (a > Math.PI/2 || a < -Math.PI/2) a += Math.PI;
+    ctx.rotate(a);
+  }
+
+  ctx.fillStyle = 'var(--overlay-darker)';
+  ctx.fillRect(-w/2-4, -tSize/2-2, w+8, tSize+4);
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+// ── Dim style UI ──────────────────────────────────────────────────
+
+function renderDimStyleBtn() {
+  const btn = document.getElementById('btnDimStyle');
+  if (!btn) return;
+  const s = dimStyles.find(s => s.id === activeDimStyleId) || dimStyles[0];
+  btn.textContent = (s ? '✏ '+s.name : '✏ Style') + ' ▾';
+  renderDimDropdownList();
+}
+
+function renderDimDropdownList() {
+  const list = document.getElementById('dimDropdownList');
+  if (!list) return;
+  list.innerHTML = dimStyles.map(s => {
+    const act = s.id === activeDimStyleId;
+    return `<div class="dim-dd-item ${act?'active-style':''}" onclick="selectDimStyle('${s.id}')">
+      ${act?'✓ ':''}${s.name}
+    </div>`;
+  }).join('');
+}
+
+function toggleDimDropdown() {
+  const dd = document.getElementById('dimDropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+  renderDimDropdownList();
+}
+function closeDimDropdown() {
+  const dd = document.getElementById('dimDropdown');
+  if (dd) dd.style.display = 'none';
+}
+function selectDimStyle(id) {
+  activeDimStyleId = id;
+  closeDimDropdown();
+  renderDimStyleBtn();
+  redraw();
+}
+function openDimStyleDialog() {
+  const name = prompt('Style name:','My Style');
+  if (!name) return;
+  const id = 'style_'+dimStyleIdCounter++;
+  dimStyles.push({ id, name: name.trim(), fmt: { ...DEFAULT_FMT } });
+  activeDimStyleId = id;
+  renderDimStyleBtn();
+  redraw();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#btnDimStyle') && !e.target.closest('#dimDropdown')) closeDimDropdown();
+});
+
+// ── Format tab logic ──────────────────────────────────────────────
+
+function switchDetailTab(tab) {
+  document.querySelectorAll('.detail-tab').forEach((t,i) => {
+    t.classList.toggle('active', (i===0&&tab==='measure')||(i===1&&tab==='format'));
+  });
+  document.getElementById('detailPaneMeasure').classList.toggle('active', tab==='measure');
+  document.getElementById('detailPaneFormat').classList.toggle('active',  tab==='format');
+  if (tab === 'format' && overrideTargetIdx >= 0) {
+    const m = measurements[overrideTargetIdx];
+    const isCount = m.type === 'count';
+    // Show the right controls
+    document.getElementById('fmtDimControls').style.display   = isCount ? 'none'  : 'block';
+    document.getElementById('fmtCountControls').style.display = isCount ? 'block' : 'none';
+    if (isCount) {
+      renderCountFmtTab(m);
+    } else {
+      currentFmt = { ...getMeasFmt(m) };
+      renderFmtTab();
+    }
+    renderFmtPreview();
+  }
+}
+
+// Default count format
+const DEFAULT_COUNT_FMT = { shape:'circle', markerSize:'m', showNum:'show', numStyle:'1' };
+
+function getCountFmt(m) {
+  return { ...DEFAULT_COUNT_FMT, ...(m.countFmt || {}) };
+}
+
+function setCountFmt(key, val) {
+  if (overrideTargetIdx < 0) return;
+  const m = measurements[overrideTargetIdx];
+  if (!m.countFmt) m.countFmt = { ...DEFAULT_COUNT_FMT };
+  m.countFmt[key] = val;
+  renderCountFmtTab(m);
+  renderFmtPreview();
+  redraw();
+}
+
+function renderCountFmtTab(m) {
+  const f = getCountFmt(m);
+  [['fmtCountShape','shape'],['fmtCountSize','markerSize'],
+   ['fmtCountNum','showNum'],['fmtCountNumStyle','numStyle']].forEach(([groupId, key]) => {
+    const grp = document.getElementById(groupId);
+    if (!grp) return;
+    grp.querySelectorAll('.fmt-chip').forEach(chip => {
+      chip.classList.toggle('sel', chip.dataset.val === f[key]);
+    });
+  });
+}
+
+function setFmt(key, val) {
+  if (!currentFmt) return;
+  currentFmt[key] = val;
+  // Save immediately to measurement
+  if (overrideTargetIdx >= 0) {
+    measurements[overrideTargetIdx].fmt = { ...currentFmt };
+    redraw();
+  }
+  renderFmtTab();
+  renderFmtPreview();
+}
+
+function renderFmtTab() {
+  if (!currentFmt) return;
+  const f = currentFmt;
+  // Update all chip selections
+  [['fmtTerminator','terminator'],['fmtExtLines','extLines'],['fmtTextPos','textPos'],
+   ['fmtTextRot','textRot'],['fmtTextSize','textSize'],['fmtArrowSize','arrowSize'],
+   ['fmtLineStyle','lineStyle']].forEach(([groupId, key]) => {
+    const grp = document.getElementById(groupId);
+    if (!grp) return;
+    grp.querySelectorAll('.fmt-chip').forEach(chip => {
+      chip.classList.toggle('sel', chip.dataset.val === f[key]);
+    });
+  });
+  // Show/hide ext line row and arrow size
+  const showExt = (f.terminator === 'arch' || f.terminator === 'arrow');
+  const extRow = document.getElementById('fmtExtRow');
+  if (extRow) extRow.style.display = showExt ? 'flex' : 'none';
+  const arrowRow = document.getElementById('fmtArrowSizeRow');
+  if (arrowRow) arrowRow.style.display = (f.terminator !== 'none') ? 'flex' : 'none';
+  // Style preset chips
+  const picker = document.getElementById('fmtStylePicker');
+  if (picker) {
+    picker.innerHTML = dimStyles.map(s =>
+      `<span class="fmt-chip" onclick="applyStylePreset('${s.id}')">${s.name}</span>`
+    ).join('');
+  }
+}
+
+function renderFmtPreview() {
+  const canvas = document.getElementById('fmtPreviewCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0,0,w,h);
+
+  if (overrideTargetIdx >= 0 && measurements[overrideTargetIdx]?.type === 'count') {
+    // Preview count markers
+    const m = measurements[overrideTargetIdx];
+    const f = getCountFmt(m);
+    const sizes = { s:10, m:16, l:24 };
+    const r = sizes[f.markerSize] || 16;
+    const numStyle = f.numStyle || '1';
+    const pts = [{x:40,y:h/2},{x:100,y:h/2},{x:160,y:h/2},{x:220,y:h/2}];
+    pts.forEach((pt, i) => {
+      ctx.save();
+      ctx.beginPath();
+      if (f.shape === 'square') {
+        ctx.rect(pt.x-r, pt.y-r, r*2, r*2);
+      } else if (f.shape === 'diamond') {
+        ctx.moveTo(pt.x,pt.y-r); ctx.lineTo(pt.x+r,pt.y);
+        ctx.lineTo(pt.x,pt.y+r); ctx.lineTo(pt.x-r,pt.y); ctx.closePath();
+      } else if (f.shape === 'dot') {
+        ctx.arc(pt.x, pt.y, r*0.35, 0, Math.PI*2);
+      } else {
+        ctx.arc(pt.x, pt.y, r, 0, Math.PI*2);
+      }
+      ctx.fillStyle = '#53d8fb'; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+      if (f.showNum !== 'hide' && f.shape !== 'dot') {
+        const label = numStyle==='A' ? String.fromCharCode(65+i)
+                    : numStyle==='i' ? ['i','ii','iii','iv'][i]
+                    : String(i+1);
+        const fontSize = Math.round(r * 1.1);
+        ctx.fillStyle='#fff'; ctx.font=`bold ${fontSize}px sans-serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(label, pt.x, pt.y);
+      }
+      ctx.restore();
+    });
+  } else if (currentFmt) {
+    drawDimLine(ctx, 40, h/2, w-40, h/2, '3000 mm', '#53d8fb', currentFmt);
+  }
+}
+
+function applyStylePreset(styleId) {
+  const s = dimStyles.find(s => s.id === styleId);
+  if (!s) return;
+  currentFmt = { ...DEFAULT_FMT, ...s.fmt };
+  if (overrideTargetIdx >= 0) {
+    measurements[overrideTargetIdx].fmt = { ...currentFmt };
+    redraw();
+  }
+  renderFmtTab(); renderFmtPreview();
+}
+
+function resetFmtToStyle() {
+  const s = dimStyles.find(s => s.id === activeDimStyleId) || dimStyles[0];
+  currentFmt = { ...DEFAULT_FMT, ...(s?s.fmt:{}) };
+  if (overrideTargetIdx >= 0) {
+    delete measurements[overrideTargetIdx].fmt;
+    redraw();
+  }
+  renderFmtTab(); renderFmtPreview();
+}
+
+function saveFmtAsStyle() {
+  const name = prompt('Name for this style:', 'Custom');
+  if (!name) return;
+  const id = 'style_'+dimStyleIdCounter++;
+  dimStyles.push({ id, name: name.trim(), fmt: { ...currentFmt } });
+  activeDimStyleId = id;
+  renderDimStyleBtn(); renderFmtTab(); renderFmtPreview();
+}
+
+// ── Groups ────────────────────────────────────────────────────────
+// { id, name, color, visible, collapsed }
+let groups = [];
+let activeGroupId    = null;   // new measurements go into this group (null = ungrouped)
+let ungroupedVisible = true;   // visibility toggle for ungrouped measurements
+let soloGroupId      = null;   // when set, only this group is visible on canvas
+let assignGroupTargetIdx = -1;
+let groupIdCounter = 1;
+const GROUP_COLORS = ['#38bdf8','#a78bfa','#34d399','#fb923c','#f472b6','#facc15','#60a5fa','#f87171','#4ade80','#e879f9'];
+function nextGroupColor() { return GROUP_COLORS[(groups.length) % GROUP_COLORS.length]; }
+
+const pdfCanvas      = document.getElementById('pdfCanvas');
+const measureCanvas  = document.getElementById('measureCanvas');
+const interactCanvas = document.getElementById('interactCanvas');
+const pdfCtx  = pdfCanvas.getContext('2d');
+const mCtx    = measureCanvas.getContext('2d');
+const iCtx    = interactCanvas.getContext('2d');
+
+// ─────────────────────────────────────────────
+//  Coordinate helpers
+// ─────────────────────────────────────────────
+function s2p(sx, sy) { return { x: sx / zoom, y: sy / zoom }; }
+function p2s(px, py) { return { x: px * zoom, y: py * zoom }; }
+function mousePos(e) {
+  const r = interactCanvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// ─────────────────────────────────────────────
+//  Tool selection
+// ─────────────────────────────────────────────
+const HINTS = {
+  select:  'Click a measurement to select it. Drag to reposition. Delete key removes it.',
+  line:    'Click and drag to measure a straight distance.',
+  rect:    'Click and drag to measure a rectangle\'s dimensions and area.',
+  circle:  'Click center, drag to edge — measures radius, diameter, area.',
+  angle:   'Click 3 points: vertex first, then two arm ends.',
+  polygon: 'Click to place points around any shape. Double-click or click near the first point to close.',
+};
+const TOOL_IDS = ['btnSelect','btnLine','btnRect','btnCircle','btnAngle','btnPolygon'];
+
+function setTool(t) {
+  if (currentTool === 'count') finishCount();
+  if (currentTool === 'chain' && chainPoints.length >= 2) finishChain();
+  currentTool = t;
+  anglePoints = []; polyPoints = []; chainPoints = []; countPoints = [];
+  drawing = false; dragActive = false;
+  TOOL_IDS.forEach(id => document.getElementById(id).classList.remove('active'));
+  const capId = 'btn' + t.charAt(0).toUpperCase() + t.slice(1);
+  document.getElementById(capId).classList.add('active');
+  document.getElementById('toolHint').textContent = HINTS[t];
+  setCursor('default');
+  redraw();
+}
+
+function setCursor(type) {
+  interactCanvas.className = '';
+  if (type !== 'default') interactCanvas.classList.add('cursor-' + type);
+}
+
+// ─────────────────────────────────────────────
+//  Scale / format helpers
+// ─────────────────────────────────────────────
+function getScale() { return parseFloat(document.getElementById('scaleVal').value) || 1; }
+function getUnit()  { return document.getElementById('unitSel').value; }
+function fmt(pdfPx) {
+  const v = pdfPx * getScale();
+  return v < 10 ? v.toFixed(3) : v < 1000 ? v.toFixed(2) : v.toFixed(1);
+}
+function fmtArea(pdfPx2) {
+  const v = pdfPx2 * getScale() * getScale();
+  return v < 10 ? v.toFixed(3) : v.toFixed(2);
+}
+
+// ─────────────────────────────────────────────
+//  PDF loading
+// ─────────────────────────────────────────────
+function loadPDF(input) {
+  const file = input.files[0]; if (!file) return;
+  pdfFileName = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const ab = e.target.result;
+    // store base64 for Save Job
+    pdfRawB64 = arrayBufferToBase64(ab);
+    initPdfDoc(ab);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function initPdfDoc(arrayBuffer, preserveState) {
+  pdfjsLib.getDocument({ data: arrayBuffer }).promise.then(doc => {
+    pdfDoc = doc; totalPages = doc.numPages;
+    if (!preserveState) {
+      pageNum = 1; measurements = []; selectedIdx = -1; colorIdx = 0;
+    }
+    updateMeasList(); renderPage();
+    document.getElementById('pageNav').style.display = totalPages > 1 ? 'flex' : 'none';
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const buf = new ArrayBuffer(bin.length);
+  const arr = new Uint8Array(buf);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return buf;
+}
+
+function renderPage() {
+  if (!pdfDoc) return;
+  pdfDoc.getPage(pageNum).then(page => {
+    const vp = page.getViewport({ scale: zoom });
+    [pdfCanvas, measureCanvas, interactCanvas].forEach(c => {
+      c.width = vp.width; c.height = vp.height;
+    });
+    page.render({ canvasContext: pdfCtx, viewport: vp }).promise.then(() => {
+      document.getElementById('dropOverlay').classList.add('hidden');
+      document.getElementById('canvasContainer').style.display = 'inline-block';
+      // Build edge cache asynchronously so it doesn't block the repaint
+      setTimeout(buildEdgeCache, 50);
+      redraw();
+    });
+    document.getElementById('pageInfo').textContent = `${pageNum} / ${totalPages}`;
+    document.getElementById('prevPage').disabled = pageNum <= 1;
+    document.getElementById('nextPage').disabled = pageNum >= totalPages;
+  });
+}
+
+function changePage(delta) {
+  pageNum = Math.max(1, Math.min(totalPages, pageNum + delta));
+  renderPage();
+}
+
+function adjustZoom(delta) {
+  zoom = Math.max(0.25, Math.min(4, zoom + delta));
+  document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+  renderPage();
+}
+
+// ─────────────────────────────────────────────
+//  Drag & drop PDF
+// ─────────────────────────────────────────────
+const wrap = document.getElementById('canvasWrap');
+wrap.addEventListener('dragover', e => e.preventDefault());
+wrap.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  if (f.name.endsWith('.pmjob')) { loadJobFromFile(f); return; }
+  if (f.type === 'application/pdf' || f.name.endsWith('.pdf')) {
+    pdfFileName = f.name;
+    const dt = new DataTransfer(); dt.items.add(f);
+    document.getElementById('fileInput').files = dt.files;
+    loadPDF(document.getElementById('fileInput'));
+  }
+});
+
+// ─────────────────────────────────────────────
+//  Hit-testing (PDF space)
+// ─────────────────────────────────────────────
+const HR = 8;
+
+function hitTest(pp) {
+  for (let i = measurements.length - 1; i >= 0; i--) {
+    if (measurements[i].page === pageNum && measVisible(measurements[i]) && hitMeasurement(measurements[i], pp)) return i;
+  }
+  return -1;
+}
+
+function hitMeasurement(m, p) {
+  if (m.type === 'line') {
+    return distSeg(p, {x:m.x1,y:m.y1}, {x:m.x2,y:m.y2}) < HR;
+  } else if (m.type === 'rect') {
+    const x0=Math.min(m.x,m.x+m.w), x1=Math.max(m.x,m.x+m.w);
+    const y0=Math.min(m.y,m.y+m.h), y1=Math.max(m.y,m.y+m.h);
+    return (p.x>=x0-HR&&p.x<=x1+HR&&p.y>=y0-HR&&p.y<=y1+HR) &&
+           (p.x<=x0+HR||p.x>=x1-HR||p.y<=y0+HR||p.y>=y1-HR);
+  } else if (m.type === 'circle') {
+    return Math.abs(Math.hypot(p.x-m.cx,p.y-m.cy) - m.r) < HR;
+  } else if (m.type === 'angle') {
+    return distSeg(p,{x:m.ax,y:m.ay},{x:m.vx,y:m.vy})<HR || distSeg(p,{x:m.vx,y:m.vy},{x:m.bx,y:m.by})<HR;
+  } else if (m.type === 'polygon') {
+    const pts = m.points;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i+1)%pts.length];
+      if (distSeg(p,a,b) < HR) return true;
+    }
+    return false;
+  } else if (m.type === 'chain') {
+    for (let i = 0; i < m.points.length - 1; i++) {
+      if (distSeg(p, m.points[i], m.points[i+1]) < HR) return true;
+    }
+    return false;
+  } else if (m.type === 'count') {
+    return m.points.some(pt => Math.hypot(p.x-pt.x, p.y-pt.y) < HR);
+  }
+  return false;
+}
+
+function distSeg(p, a, b) {
+  const dx=b.x-a.x, dy=b.y-a.y, l2=dx*dx+dy*dy;
+  if (l2===0) return Math.hypot(p.x-a.x,p.y-a.y);
+  const t = Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/l2));
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+
+// Return ordered list of draggable node positions (PDF space) for a measurement
+function getNodes(m) {
+  if (m.type === 'line')    return [{x:m.x1,y:m.y1},{x:m.x2,y:m.y2}];
+  if (m.type === 'rect')    return [
+    {x:m.x,     y:m.y},     {x:m.x+m.w, y:m.y},
+    {x:m.x+m.w, y:m.y+m.h},{x:m.x,     y:m.y+m.h}
+  ];
+  if (m.type === 'circle')  return [
+    {x:m.cx,    y:m.cy},           // 0 = centre
+    {x:m.cx+m.r,y:m.cy},           // 1 = right edge (radius handle)
+  ];
+  if (m.type === 'angle')   return [{x:m.ax,y:m.ay},{x:m.vx,y:m.vy},{x:m.bx,y:m.by}];
+  if (m.type === 'polygon') return m.points.map(p=>({x:p.x,y:p.y}));
+  if (m.type === 'chain')   return m.points.map(p=>({x:p.x,y:p.y}));
+  if (m.type === 'count')   return m.points.map(p=>({x:p.x,y:p.y}));
+  return [];
+}
+
+// Return index of node under cursor (PDF space), or -1
+const NODE_HR = 7; // px in PDF space — slightly tighter than shape hit radius
+function hitNode(m, p) {
+  const nodes = getNodes(m);
+  for (let i = 0; i < nodes.length; i++) {
+    if (Math.hypot(p.x - nodes[i].x, p.y - nodes[i].y) < NODE_HR / zoom) return i;
+  }
+  return -1;
+}
+
+// ─────────────────────────────────────────────
+//  Drag helpers
+// ─────────────────────────────────────────────
+
+// Move whole shape by (dx,dy)
+function applyDragWhole(snap, dx, dy) {
+  const m = measurements[selectedIdx];
+  if (m.type === 'line') {
+    m.x1=snap.x1+dx; m.y1=snap.y1+dy; m.x2=snap.x2+dx; m.y2=snap.y2+dy;
+  } else if (m.type === 'rect') {
+    m.x=snap.x+dx; m.y=snap.y+dy;
+  } else if (m.type === 'circle') {
+    m.cx=snap.cx+dx; m.cy=snap.cy+dy;
+  } else if (m.type === 'angle') {
+    m.ax=snap.ax+dx; m.ay=snap.ay+dy;
+    m.vx=snap.vx+dx; m.vy=snap.vy+dy;
+    m.bx=snap.bx+dx; m.by=snap.by+dy;
+  } else if (m.type === 'polygon') {
+    m.points = snap.points.map(pt => ({ x:pt.x+dx, y:pt.y+dy }));
+  } else if (m.type === 'chain') {
+    m.points = snap.points.map(pt => ({ x:pt.x+dx, y:pt.y+dy }));
+  } else if (m.type === 'count') {
+    m.points = snap.points.map(pt => ({ x:pt.x+dx, y:pt.y+dy }));
+  }
+}
+
+// Move a single node (nodeIdx) to absolute PDF position (nx, ny)
+function applyDragNode(nodeIdx, nx, ny) {
+  const m = measurements[selectedIdx];
+  if (m.type === 'line') {
+    if (nodeIdx===0) { m.x1=nx; m.y1=ny; } else { m.x2=nx; m.y2=ny; }
+  } else if (m.type === 'rect') {
+    // Corners: 0=TL 1=TR 2=BR 3=BL — moving one corner reshapes the rect
+    const ox = nodeIdx===0||nodeIdx===3 ? m.x+m.w : m.x; // opposite-x anchor
+    const oy = nodeIdx===0||nodeIdx===1 ? m.y+m.h : m.y; // opposite-y anchor
+    m.x = Math.min(nx, ox); m.y = Math.min(ny, oy);
+    m.w = Math.abs(nx - ox); m.h = Math.abs(ny - oy);
+    // preserve sign so existing drag logic stays consistent
+    if (nx < ox) m.w = -(m.w); // keep negative w when dragging left of anchor
+    if (ny < oy) m.h = -(m.h);
+    m.x = nx < ox ? nx : ox;
+    m.y = ny < oy ? ny : oy;
+    m.w = nx - ox; m.h = ny - oy;
+  } else if (m.type === 'circle') {
+    if (nodeIdx===0) { // centre — keep radius, just translate
+      const dr = { x: nx-m.cx, y: ny-m.cy };
+      m.cx=nx; m.cy=ny;
+    } else { // radius handle — resize
+      m.r = Math.hypot(nx-m.cx, ny-m.cy);
+    }
+  } else if (m.type === 'angle') {
+    if (nodeIdx===0) { m.ax=nx; m.ay=ny; }
+    else if (nodeIdx===1) { m.vx=nx; m.vy=ny; }
+    else { m.bx=nx; m.by=ny; }
+    m.deg = calcAngle({x:m.ax,y:m.ay},{x:m.vx,y:m.vy},{x:m.bx,y:m.by});
+  } else if (m.type === 'polygon') {
+    m.points[nodeIdx] = { x:nx, y:ny };
+  } else if (m.type === 'chain') {
+    m.points[nodeIdx] = { x:nx, y:ny };
+  } else if (m.type === 'count') {
+    m.points[nodeIdx] = { x:nx, y:ny };
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Mouse events
+// ─────────────────────────────────────────────
+interactCanvas.addEventListener('mousedown', onDown);
+interactCanvas.addEventListener('mousemove', onMove);
+interactCanvas.addEventListener('mouseup',   onUp);
+interactCanvas.addEventListener('dblclick',  onDblClick);
+interactCanvas.addEventListener('mouseleave', () => {
+  snapResult = null;
+  if (!dragActive && !drawing) { hoverIdx=-1; redraw(); }
+});
+
+function onDown(e) {
+  if (!pdfDoc) return;
+  const sp = mousePos(e); const pp = s2p(sp.x,sp.y);
+
+  // SELECT tool
+  if (currentTool === 'select') {
+    if (selectedIdx >= 0) {
+      const nodeHit = hitNode(measurements[selectedIdx], pp);
+      if (nodeHit >= 0) {
+        dragActive = true; dragNodeIdx = nodeHit;
+        dragStartPdf = pp;
+        dragSnapshot = JSON.parse(JSON.stringify(measurements[selectedIdx]));
+        setCursor('move'); redraw(); return;
+      }
+    }
+    const hit = hitTest(pp);
+    if (hit >= 0) {
+      selectedIdx = hit; dragActive = true; dragNodeIdx = -1;
+      dragStartPdf = pp;
+      dragSnapshot = JSON.parse(JSON.stringify(measurements[hit]));
+      updateMeasList(); showMeasResult(measurements[hit]); setCursor('move');
+      // Reflect selected measurement in sidebar panels
+      const m = measurements[hit];
+      renderScaleZones(m.zoneId || null);
+      renderGroupList(m.groupId || null);
+    } else {
+      selectedIdx = -1;
+      updateMeasList();
+      renderScaleZones();   // back to drawing state
+      renderGroupList();    // back to drawing state
+    }
+    redraw(); return;
+  }
+
+  // POLYGON / CHAIN / COUNT — handled on click not mousedown drag
+  if (currentTool === 'polygon') return;
+  if (currentTool === 'chain') return;
+  if (currentTool === 'count') return;
+
+  // ANGLE — handled on click
+  if (currentTool === 'angle') {
+    anglePoints.push(snap(pp));
+    if (anglePoints.length === 3) finishAngle();
+    redraw(); drawSnapIndicator(iCtx); return;
+  }
+
+  // LINE / RECT / CIRCLE — click-click mode
+  // First click: set start point. Second click: commit.
+  if (['line','rect','circle'].includes(currentTool)) {
+    if (!drawing) {
+      // First click — set start
+      drawing = true; startPdf = snap(pp); livePdf = startPdf;
+      startSnapResult = snapResult ? { ...snapResult } : null;
+      iCtx.clearRect(0, 0, interactCanvas.width, interactCanvas.height);
+      drawSnapIndicator(iCtx);
+    } else {
+      // Second click — commit
+      const ep = currentTool === 'line' ? constrain(startPdf, snap(pp), e.shiftKey) : snap(pp);
+      commitDrawing(ep);
+    }
+    return;
+  }
+}
+
+function onMove(e) {
+  if (!pdfDoc) return;
+  const sp = mousePos(e); const pp = s2p(sp.x,sp.y);
+  const snappedPp = (currentTool === 'select') ? pp : snap(pp);
+  // For polygon: constrain live endpoint to H/V from last placed point when shift held
+  if (currentTool === 'polygon' && polyPoints.length > 0 && e.shiftKey) {
+    livePdf = constrain(polyPoints[polyPoints.length - 1], snappedPp, true);
+  } else if (currentTool === 'chain' && chainPoints.length > 0 && e.shiftKey) {
+    livePdf = constrain(chainPoints[chainPoints.length - 1], snappedPp, true);
+  } else {
+    livePdf = (currentTool === 'line' && drawing)
+      ? constrain(startPdf, snappedPp, e.shiftKey)
+      : snappedPp;
+  }
+
+  if (currentTool === 'select') {
+    if (dragActive) {
+      let snapped = snap(pp);
+      // Shift-constrain: lock to H or V from the relevant anchor point
+      if (e.shiftKey && dragNodeIdx >= 0) {
+        const m = measurements[selectedIdx];
+        if (m.type === 'line') {
+          const anchor = dragNodeIdx === 0 ? { x: m.x2, y: m.y2 } : { x: m.x1, y: m.y1 };
+          snapped = constrain(anchor, snapped, true);
+        } else if (m.type === 'polygon' && m.points.length > 1) {
+          // Use the previous point as anchor (wraps around for first point)
+          const prevIdx = (dragNodeIdx - 1 + m.points.length) % m.points.length;
+          const anchor  = m.points[prevIdx];
+          snapped = constrain(anchor, snapped, true);
+        }
+      }
+      if (dragNodeIdx >= 0) {
+        applyDragNode(dragNodeIdx, snapped.x, snapped.y);
+      } else {
+        applyDragWhole(dragSnapshot, snapped.x-dragStartPdf.x, snapped.y-dragStartPdf.y);
+      }
+      showMeasResult(measurements[selectedIdx]);
+      redraw();
+    } else {
+      // cursor: node handle > shape body > empty
+      let cursor = 'select';
+      if (selectedIdx >= 0 && hitNode(measurements[selectedIdx], pp) >= 0) {
+        cursor = 'move';
+      } else {
+        const hit = hitTest(pp);
+        if (hit !== hoverIdx) { hoverIdx = hit; redraw(); }
+        if (hit >= 0) cursor = 'grab';
+      }
+      setCursor(cursor);
+    }
+    return;
+  }
+
+  // Polygon — update live preview
+  if (currentTool === 'polygon') {
+    const nearStart = polyPoints.length > 2 &&
+      Math.hypot(pp.x-polyPoints[0].x, pp.y-polyPoints[0].y) < 12/zoom;
+    setCursor(nearStart ? 'close' : 'poly');
+    redraw(); return;
+  }
+  if (currentTool === 'chain' || currentTool === 'count') { redraw(); return; }
+
+  if (currentTool === 'angle' && anglePoints.length > 0) { redraw(); return; }
+  if (drawing) { drawLive(); return; }
+  // Idle drawing tool — show snap indicator tracking the cursor
+  if (['line','rect','circle','angle','polygon','chain','count'].includes(currentTool)) {
+    iCtx.clearRect(0, 0, interactCanvas.width, interactCanvas.height);
+    drawSnapIndicator(iCtx);
+  }
+}
+
+// Constrain a point to horizontal/vertical/45° from an anchor when Shift is held.
+// For lines: snap to H or V only (whichever axis is dominant).
+function constrain(anchor, pt, shiftHeld) {
+  if (!shiftHeld) return pt;
+  const dx = pt.x - anchor.x, dy = pt.y - anchor.y;
+  // Snap to the dominant axis (H or V)
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { x: pt.x, y: anchor.y };   // horizontal
+  } else {
+    return { x: anchor.x, y: pt.y };   // vertical
+  }
+}
+
+function commitDrawing(ep) {
+  drawing = false;
+  startSnapResult = null;
+  const dx = ep.x-startPdf.x, dy = ep.y-startPdf.y;
+  if (Math.abs(dx)<2 && Math.abs(dy)<2) return;
+  const color = nextColor();
+  if (currentTool === 'line') {
+    const pdfPx = Math.hypot(dx,dy); lastLinePdfPx = pdfPx;
+    commitMeasurement({ type:'line', color, x1:startPdf.x,y1:startPdf.y,x2:ep.x,y2:ep.y,pdfPx });
+    showResult('line', pdfPx);
+  } else if (currentTool === 'rect') {
+    commitMeasurement({ type:'rect', color, x:startPdf.x,y:startPdf.y,w:dx,h:dy });
+    showResult('rect', Math.abs(dx), Math.abs(dy));
+  } else if (currentTool === 'circle') {
+    const r = Math.hypot(dx,dy);
+    commitMeasurement({ type:'circle', color, cx:startPdf.x,cy:startPdf.y,r });
+    showResult('circle', r);
+  }
+}
+
+function onUp(e) {
+  if (currentTool === 'select') {
+    if (dragActive) {
+      saveUndo();
+      dragActive = false; dragNodeIdx = -1;
+      updateMeasList();
+      if (selectedIdx >= 0) showMeasResult(measurements[selectedIdx]);
+      setCursor('grab');
+    }
+    return;
+  }
+  if (currentTool === 'polygon') {
+    if (!e._fromDblClick) addPolyPoint(mousePos(e), e.shiftKey);
+    return;
+  }
+  if (currentTool === 'chain') {
+    if (!e._fromDblClick) addChainPoint(mousePos(e), e.shiftKey);
+    return;
+  }
+  if (currentTool === 'count') {
+    addCountPoint(mousePos(e));
+    return;
+  }
+  // line/rect/circle/angle are handled in onDown (click-click mode)
+}
+
+function onDblClick(e) {
+  if (currentTool === 'polygon' && polyPoints.length >= 2) {
+    e._fromDblClick = true;
+    finishPolygon();
+  }
+  if (currentTool === 'chain' && chainPoints.length >= 2) {
+    e._fromDblClick = true;
+    finishChain();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Polygon tool
+// ─────────────────────────────────────────────
+function addPolyPoint(sp, shiftHeld) {
+  let pp = s2p(sp.x, sp.y);
+  // Close if clicking near first point
+  if (polyPoints.length > 2) {
+    const d = Math.hypot(pp.x-polyPoints[0].x, pp.y-polyPoints[0].y);
+    if (d < 12/zoom) { finishPolygon(); return; }
+  }
+  // Shift-constrain from last placed point
+  if (shiftHeld && polyPoints.length > 0) {
+    pp = constrain(polyPoints[polyPoints.length - 1], snap(pp), true);
+  } else {
+    pp = snap(pp);
+  }
+  polyPoints.push(pp);
+  redraw();
+  drawSnapIndicator(iCtx);
+}
+
+function finishPolygon() {
+  if (polyPoints.length < 3) { polyPoints=[]; redraw(); return; }
+  const pts = [...polyPoints];
+  polyPoints = [];
+  const perim = polyPerimeter(pts);
+  const area  = polyArea(pts);
+  const color = nextColor();
+  commitMeasurement({ type:'polygon', color, points:pts, closed:true });
+  showResultPoly(perim, area);
+  redraw();
+}
+
+function polyPerimeter(pts) {
+  let p = 0;
+  for (let i=0;i<pts.length;i++) {
+    const a=pts[i], b=pts[(i+1)%pts.length];
+    p += Math.hypot(b.x-a.x, b.y-a.y);
+  }
+  return p;
+}
+
+function polyArea(pts) {
+  // Shoelace formula
+  let s = 0;
+  for (let i=0;i<pts.length;i++) {
+    const a=pts[i], b=pts[(i+1)%pts.length];
+    s += a.x*b.y - b.x*a.y;
+  }
+  return Math.abs(s)/2;
+}
+
+// ─────────────────────────────────────────────
+//  Chain / Running dimension tool
+// ─────────────────────────────────────────────
+function addChainPoint(sp, shiftHeld) {
+  let pp = s2p(sp.x, sp.y);
+  if (shiftHeld && chainPoints.length > 0) {
+    pp = constrain(chainPoints[chainPoints.length - 1], snap(pp), true);
+  } else {
+    pp = snap(pp);
+  }
+  chainPoints.push(pp);
+  redraw();
+  drawSnapIndicator(iCtx);
+}
+
+function finishChain() {
+  if (chainPoints.length < 2) { chainPoints = []; redraw(); return; }
+  const pts = [...chainPoints];
+  chainPoints = [];
+  const color = nextColor();
+  commitMeasurement({ type: 'chain', color, points: pts });
+  redraw();
+}
+
+function chainLength(pts) {
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    total += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y);
+  }
+  return total;
+}
+
+// ─────────────────────────────────────────────
+//  Count tool
+// ─────────────────────────────────────────────
+function addCountPoint(sp) {
+  const pp = snap(s2p(sp.x, sp.y));
+  // Find existing count measurement on this page to add to, or create new one
+  // Each click on an active count measurement adds a point; pressing Escape or switching tool commits
+  const existing = measurements.findIndex(m =>
+    m.type === 'count' && m.page === pageNum && m._active);
+  if (existing >= 0) {
+    saveUndo();
+    measurements[existing].points.push(pp);
+    updateMeasList();
+  } else {
+    saveUndo();
+    const color = nextColor();
+    const label = ''; // user sets label via detail dialog
+    commitMeasurement({ type: 'count', color, points: [pp], label, _active: true });
+  }
+  redraw();
+  drawSnapIndicator(iCtx);
+}
+
+function finishCount() {
+  // Mark count as no longer active (called on tool switch or Escape)
+  measurements.forEach(m => { if (m.type === 'count') delete m._active; });
+  updateMeasList(); redraw();
+}
+
+// ─────────────────────────────────────────────
+//  Angle tool
+// ─────────────────────────────────────────────
+function finishAngle() {
+  const [a,v,b] = anglePoints; anglePoints=[];
+  const deg = calcAngle(a,v,b);
+  commitMeasurement({ type:'angle', color:nextColor(), ax:a.x,ay:a.y,vx:v.x,vy:v.y,bx:b.x,by:b.y,deg });
+  showResultAngle(deg);
+}
+
+function calcAngle(a,v,b) {
+  const da=Math.atan2(a.y-v.y,a.x-v.x), db=Math.atan2(b.y-v.y,b.x-v.x);
+  let deg=Math.abs((da-db)*180/Math.PI);
+  if (deg>180) deg=360-deg;
+  return deg;
+}
+
+// ─────────────────────────────────────────────
+//  Commit / helpers
+// ─────────────────────────────────────────────
+function nextColor() { return COLORS[colorIdx++ % COLORS.length]; }
+
+function commitMeasurement(m) {
+  saveUndo();
+  m.page = pageNum;
+  if (activeZoneId)  m.zoneId   = activeZoneId;
+  if (activeGroupId) m.groupId  = activeGroupId;
+  measurements.push(m);
+  selectedIdx = measurements.length-1;
+  renderGroupList(); updateMeasList(); redraw();
+}
+
+// ─────────────────────────────────────────────
+//  Snap engine
+// ─────────────────────────────────────────────
+
+function toggleSnap(mode) {
+  snapModes[mode] = !snapModes[mode];
+  document.getElementById('snap' + mode.charAt(0).toUpperCase() + mode.slice(1))
+    .classList.toggle('active', snapModes[mode]);
+  // Show grid spacing input only when grid snap is on
+  if (mode === 'grid') {
+    document.getElementById('gridSize').style.display = snapModes.grid ? 'inline-block' : 'none';
+  }
+}
+
+function rebuildGrid() {
+  gridSpacing = Math.max(2, parseFloat(document.getElementById('gridSize').value) || 20);
+}
+
+// Run Sobel + non-maximum suppression on the rendered PDF canvas.
+// Also stores the gradient angle per edge point so snap() can refine to
+// the true line centre via intensity-minimum search at snap time.
+let edgeGray = null;   // cached greyscale array (full res, for refinement)
+let edgeW = 0, edgeH = 0;
+
+function buildEdgeCache() {
+  edgePoints = [];
+  edgeGray = null;
+  const w = pdfCanvas.width, h = pdfCanvas.height;
+  if (w === 0 || h === 0) return;
+  edgeW = w; edgeH = h;
+
+  const imgData = pdfCtx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+  const gray = new Float32Array(w * h);
+
+  // Greyscale
+  for (let i = 0; i < w * h; i++) {
+    gray[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+  }
+  edgeGray = gray;
+
+  // Sobel
+  const mag = new Float32Array(w * h);
+  const ang = new Float32Array(w * h);
+  const idx = (r, c) => r * w + c;
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const gx = (
+        -gray[idx(y-1,x-1)] + gray[idx(y-1,x+1)]
+        -2*gray[idx(y,  x-1)] + 2*gray[idx(y,  x+1)]
+        -gray[idx(y+1,x-1)] + gray[idx(y+1,x+1)]
+      );
+      const gy = (
+        -gray[idx(y-1,x-1)] -2*gray[idx(y-1,x)] -gray[idx(y-1,x+1)]
+        +gray[idx(y+1,x-1)] +2*gray[idx(y+1,x)] +gray[idx(y+1,x+1)]
+      );
+      mag[idx(y,x)] = Math.sqrt(gx*gx + gy*gy);
+      ang[idx(y,x)] = Math.atan2(gy, gx);
+    }
+  }
+
+  // Non-maximum suppression — thin to single-pixel centrelines
+  const THRESH = 60;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const m = mag[idx(y,x)];
+      if (m < THRESH) continue;
+      const a = ((ang[idx(y,x)] * 180 / Math.PI) + 180) % 180;
+      let n1, n2;
+      if      (a < 22.5 || a >= 157.5) { n1 = mag[idx(y,x-1)];   n2 = mag[idx(y,x+1)];   }
+      else if (a < 67.5)               { n1 = mag[idx(y-1,x+1)]; n2 = mag[idx(y+1,x-1)]; }
+      else if (a < 112.5)              { n1 = mag[idx(y-1,x)];   n2 = mag[idx(y+1,x)];   }
+      else                             { n1 = mag[idx(y-1,x-1)]; n2 = mag[idx(y+1,x+1)]; }
+      if (m >= n1 && m >= n2) {
+        // Store gradient angle alongside position so snap() can walk to true centre
+        edgePoints.push({ x: x / zoom, y: y / zoom, a: ang[idx(y,x)] });
+      }
+    }
+  }
+}
+
+// Given a canvas-space pixel position, walk along the gradient direction
+// to find the local intensity minimum (true centre of the drawn line).
+// Returns refined position in PDF space.
+function refineToLineCentre(ex, ey) {
+  if (!edgeGray) return { x: ex / zoom, y: ey / zoom };
+  // ex, ey are already in canvas pixels
+  const cx = Math.round(ex * zoom), cy = Math.round(ey * zoom);
+  const idx = (r, c) => r * edgeW + c;
+
+  // Walk up to 4px perpendicular to the edge (i.e. along gradient) to find darkest pixel
+  let bestX = cx, bestY = cy;
+  let bestG = edgeGray[idx(Math.max(0,Math.min(edgeH-1,cy)), Math.max(0,Math.min(edgeW-1,cx)))];
+
+  // Sample ±4 pixels in each cardinal direction and pick the darkest
+  for (let step = -4; step <= 4; step++) {
+    // Horizontal walk (finds centre of vertical lines)
+    const hx = Math.max(0, Math.min(edgeW-1, cx + step));
+    const hg = edgeGray[idx(cy, hx)];
+    if (hg < bestG) { bestG = hg; bestX = hx; bestY = cy; }
+
+    // Vertical walk (finds centre of horizontal lines)
+    const vy = Math.max(0, Math.min(edgeH-1, cy + step));
+    const vg = edgeGray[idx(vy, cx)];
+    if (vg < bestG) { bestG = vg; bestX = cx; bestY = vy; }
+  }
+
+  return { x: bestX / zoom, y: bestY / zoom };
+}
+
+// Return all snappable candidate nodes from existing measurements
+function getMeasNodes() {
+  const pts = [];
+  measurements.forEach(m => {
+    if (m.page !== pageNum) return;
+    getNodes(m).forEach(n => pts.push({ x: n.x, y: n.y, type: 'point' }));
+  });
+  // Also add in-progress polygon/chain points
+  polyPoints.forEach(p => pts.push({ x: p.x, y: p.y, type: 'point' }));
+  chainPoints.forEach(p => pts.push({ x: p.x, y: p.y, type: 'point' }));
+  anglePoints.forEach(p => pts.push({ x: p.x, y: p.y, type: 'point' }));
+  return pts;
+}
+
+// Main snap function. Takes a raw PDF-space position, returns snapped position.
+// Also sets snapResult for indicator drawing.
+function snap(pdfPt) {
+  const snapR = SNAP_RADIUS_SCREEN / zoom;  // snap radius in PDF space
+  let best = null, bestDist = Infinity;
+
+  // 1. Node snap — highest priority
+  if (snapModes.point) {
+    getMeasNodes().forEach(n => {
+      const d = Math.hypot(pdfPt.x - n.x, pdfPt.y - n.y);
+      if (d < snapR && d < bestDist) { bestDist = d; best = { x: n.x, y: n.y, type: 'point' }; }
+    });
+  }
+
+  // 2. Grid snap
+  if (snapModes.grid && !best) {
+    const gx = Math.round(pdfPt.x / gridSpacing) * gridSpacing;
+    const gy = Math.round(pdfPt.y / gridSpacing) * gridSpacing;
+    const d  = Math.hypot(pdfPt.x - gx, pdfPt.y - gy);
+    if (d < snapR && d < bestDist) { bestDist = d; best = { x: gx, y: gy, type: 'grid' }; }
+  }
+
+  // 3. Edge snap — find closest cached edge point, then refine to true line centre
+  if (snapModes.edge && !best) {
+    let bestEdge = null;
+    for (let i = 0; i < edgePoints.length; i++) {
+      const e = edgePoints[i];
+      const dx = pdfPt.x - e.x, dy = pdfPt.y - e.y;
+      if (Math.abs(dx) > snapR || Math.abs(dy) > snapR) continue;
+      const d = Math.hypot(dx, dy);
+      if (d < snapR && d < bestDist) { bestDist = d; bestEdge = e; }
+    }
+    if (bestEdge) {
+      // Walk to the intensity minimum (darkest pixel) near the edge point —
+      // this is the true centre of the drawn line, not just the gradient peak
+      const refined = refineToLineCentre(bestEdge.x, bestEdge.y);
+      best = { x: refined.x, y: refined.y, type: 'edge' };
+    }
+  }
+
+  snapResult = best;
+  return best ? { x: best.x, y: best.y } : pdfPt;
+}
+
+// Draw the snap indicator on interactCanvas
+function drawSnapIndicator(ctx) {
+  if (!snapResult) return;
+  if (currentTool === 'select') return;
+  const s = p2s(snapResult.x, snapResult.y);
+  ctx.save();
+  const colors = { point: '#4eff91', edge: '#53d8fb', grid: '#f4c842' };
+  const c = colors[snapResult.type] || '#fff';
+  ctx.strokeStyle = c;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+
+  if (snapResult.type === 'point') {
+    // Circle with crosshair
+    ctx.beginPath(); ctx.arc(s.x, s.y, 7, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s.x-11,s.y); ctx.lineTo(s.x+11,s.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s.x,s.y-11); ctx.lineTo(s.x,s.y+11); ctx.stroke();
+  } else if (snapResult.type === 'edge') {
+    // Diamond
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y-8); ctx.lineTo(s.x+8, s.y);
+    ctx.lineTo(s.x, s.y+8); ctx.lineTo(s.x-8, s.y);
+    ctx.closePath(); ctx.stroke();
+  } else if (snapResult.type === 'grid') {
+    // Plus sign
+    ctx.beginPath(); ctx.moveTo(s.x-8,s.y); ctx.lineTo(s.x+8,s.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s.x,s.y-8); ctx.lineTo(s.x,s.y+8); ctx.stroke();
+    ctx.beginPath(); ctx.arc(s.x, s.y, 3, 0, Math.PI*2); ctx.stroke();
+  }
+
+  // Small label
+  ctx.fillStyle = 'var(--overlay-darker)';
+  const label = snapResult.type;
+  ctx.font = '9px Courier New';
+  const tw = ctx.measureText(label).width;
+  ctx.fillRect(s.x + 10, s.y - 10, tw + 6, 13);
+  ctx.fillStyle = c;
+  ctx.textAlign = 'left';
+  ctx.fillText(label, s.x + 13, s.y + 0);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Scale Zone system
+//  Each zone: { id, name, ratio, pxPerUnit, unit, color }
+//  Master scale = pxPerUnit at ratio 1:1 (i.e. 1 PDF px = pxPerUnit real units)
+//  A zone at ratio R displays: pdfPx * pxPerUnit * R
+// ─────────────────────────────────────────────
+
+const ZONE_COLORS = ['#e94560','#53d8fb','#f4c842','#4eff91','#ff7c4d','#d06ef9','#c084fc','#fb923c','#34d399','#f87171'];
+let scaleZones    = [];   // array of zone objects
+let activeZoneId  = null; // id of zone used for new measurements
+let masterPxPerUnit = null; // pdfPx * masterPxPerUnit * ratio = real value
+let masterUnit      = 'mm';
+let overrideTargetIdx = -1;
+let zoneIdCounter = 1;
+
+function zoneColor(i) { return ZONE_COLORS[i % ZONE_COLORS.length]; }
+
+// Get the effective pxPerUnit and unit for a measurement
+function zoneForMeas(m) {
+  if (m.zoneId) {
+    const z = scaleZones.find(z => z.id === m.zoneId);
+    if (z) return z;
+  }
+  // fallback: active zone, then first zone, then null
+  return scaleZones.find(z => z.id === activeZoneId) || scaleZones[0] || null;
+}
+
+function fmtM(pdfPx, m) {
+  const z = zoneForMeas(m);
+  if (!z) return pdfPx.toFixed(1) + ' px';
+  const v = pdfPx * z.pxPerUnit * z.ratio;
+  return (v < 10 ? v.toFixed(3) : v < 1000 ? v.toFixed(2) : v.toFixed(1)) + ' ' + z.unit;
+}
+function fmtAreaM(pdfPx2, m) {
+  const z = zoneForMeas(m);
+  if (!z) return pdfPx2.toFixed(1) + ' px²';
+  const v = pdfPx2 * z.pxPerUnit * z.pxPerUnit * z.ratio * z.ratio;
+  return (v < 10 ? v.toFixed(3) : v.toFixed(2)) + ' ' + z.unit + '²';
+}
+
+// Legacy shims so fmt/fmtArea still work in live preview labels
+function getScale() {
+  const z = scaleZones.find(z => z.id === activeZoneId) || scaleZones[0];
+  return z ? z.pxPerUnit * z.ratio : 1;
+}
+function getUnit() {
+  const z = scaleZones.find(z => z.id === activeZoneId) || scaleZones[0];
+  return z ? z.unit : 'mm';
+}
+
+function setActiveZone(id) {
+  activeZoneId = id;
+  renderScaleZones();
+  renderActiveChip();
+}
+
+function renderActiveChip() {
+  const wrap  = document.getElementById('scaleSelectorWrap');
+  const dot   = document.getElementById('scaleSelectorDot');
+  const label = document.getElementById('scaleSelectorLabel');
+  if (!wrap) return;
+
+  if (!scaleZones.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'flex';
+  const z = scaleZones.find(z => z.id === activeZoneId) || scaleZones[0];
+  if (z) {
+    dot.style.background   = z.color;
+    label.textContent      = `1:${z.ratio}`;
+    label.style.color      = z.color;
+  }
+  renderScaleDropdownList();
+}
+
+function renderScaleDropdownList() {
+  const list = document.getElementById('scaleDropdownList');
+  if (!list) return;
+  list.innerHTML = scaleZones.map(z => {
+    const active = z.id === activeZoneId;
+    return `<div class="scale-dropdown-item ${active ? 'active-zone' : ''}" onclick="selectScaleZone('${z.id}')">
+      <div class="sd-dot" style="background:${z.color}"></div>
+      <span class="sd-name">${z.name}</span>
+      <span class="sd-ratio">1:${z.ratio}</span>
+      ${active ? '<span class="sd-check">✓</span>' : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleScaleDropdown() {
+  const dd = document.getElementById('scaleDropdown');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+
+function closeScaleDropdown() {
+  const dd = document.getElementById('scaleDropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+function selectScaleZone(id) {
+  setActiveZone(id);
+  closeScaleDropdown();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('#scaleSelectorWrap')) closeScaleDropdown();
+});
+
+function renderScaleZones(selectedZoneId) {
+  // Scale zones panel removed from sidebar — just keep the toolbar button updated
+  renderActiveChip();
+}
+
+function deleteZone(id) {
+  scaleZones = scaleZones.filter(z => z.id !== id);
+  if (activeZoneId === id) activeZoneId = scaleZones[0]?.id || null;
+  renderScaleZones(); renderActiveChip(); redraw(); updateMeasList();
+}
+
+// ── Calibrate dialog ──────────────────────────────────────────────
+function openCalibDialog() {
+  populateLinePicker('calibLinePicker');
+  syncPxFromPicker('calibLinePicker', 'calibPx');
+  document.getElementById('calibReal').value = '';
+  document.getElementById('calibAtScale').value = '100';
+  document.getElementById('calibCustomRatio').style.display = 'none';
+  document.getElementById('calibZoneName').value = 'Main Plan 1:100';
+  document.getElementById('calibDialog').classList.add('open');
+}
+
+function closeCalibDialog() { document.getElementById('calibDialog').classList.remove('open'); }
+function calibPickerChanged() { syncPxFromPicker('calibLinePicker', 'calibPx'); }
+
+// Guard all top-level DOM listeners — run after DOM is fully parsed
+window.addEventListener('DOMContentLoaded', () => {
+  const safe = (id, event, fn) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener(event, fn);
+    else console.warn('Element not found:', id);
+  };
+
+  safe('calibAtScale', 'change', function() {
+    document.getElementById('calibCustomRatio').style.display = this.value === 'custom' ? 'block' : 'none';
+    updateCalibZoneName();
+  });
+  safe('calibReal',    'input',  updateCalibZoneName);
+  safe('calibUnit',    'change', updateCalibZoneName);
+  safe('calibAtScale', 'change', updateCalibZoneName);
+  safe('scaleVal',     'input',  () => { redraw(); updateMeasList(); });
+  safe('unitSel',      'change', () => { renderPresets(); });
+
+  safe('jobFileInput', 'change', function() {
+    if (this.files && this.files[0]) {
+      const f = this.files[0];
+      this.value = '';
+      loadJobFromFile(f);
+    }
+  });
+  safe('fileInput', 'change', function() {
+    if (this.files && this.files[0]) loadPDF(this);
+  });
+
+  updateMeasList();
+  renderGroupList();
+  renderScaleZones();
+  renderActiveChip();
+  updateUndoBtns();
+  initFloatPanel();
+  renderDimStyleBtn();
+});
+
+function updateCalibZoneName() {
+  const ratioSel = document.getElementById('calibAtScale').value;
+  const ratio = ratioSel === 'custom'
+    ? parseFloat(document.getElementById('calibCustomRatio').value) || ''
+    : ratioSel;
+  const unit = document.getElementById('calibUnit').value;
+  if (ratio) document.getElementById('calibZoneName').value = `Main Plan 1:${ratio}`;
+}
+
+function applyCalib() {
+  const px    = parseFloat(document.getElementById('calibPx').value);
+  const real  = parseFloat(document.getElementById('calibReal').value);
+  const unit  = document.getElementById('calibUnit').value;
+  const ratioSel = document.getElementById('calibAtScale').value;
+  const ratio = ratioSel === 'custom'
+    ? parseFloat(document.getElementById('calibCustomRatio').value)
+    : parseFloat(ratioSel);
+  const name  = document.getElementById('calibZoneName').value.trim() || `1:${ratio}`;
+  if (!px || isNaN(px)) { alert('No line length found.\n\nDraw a line on the plan first (using the Line tool), then open Calibrate and select it from the picker.'); return; }
+  if (!real || isNaN(real)) { alert('Please enter the known real-world length of that line.'); return; }
+  if (!ratio || isNaN(ratio)) { alert('Please select or enter the drawing ratio.'); return; }
+
+  // Master: pdfPx * pxPerUnit * ratio = real  →  pxPerUnit = real / (px * ratio)
+  masterPxPerUnit = real / (px * ratio);
+  masterUnit = unit;
+
+  // Create or update zone
+  const existing = scaleZones.find(z => z.name === name);
+  const id = existing ? existing.id : 'zone_' + (zoneIdCounter++);
+  const color = existing ? existing.color : zoneColor(scaleZones.length);
+  const zone = { id, name, ratio, pxPerUnit: masterPxPerUnit, unit, color };
+  if (existing) { Object.assign(existing, zone); }
+  else { scaleZones.push(zone); }
+
+  activeZoneId = id;
+
+  // Auto-assign any existing measurements that have no zone to this one
+  measurements.forEach(m => { if (!m.zoneId) m.zoneId = id; });
+
+  // Update hidden inputs for legacy fmt() calls
+  document.getElementById('scaleVal').value = masterPxPerUnit * ratio;
+  document.getElementById('unitSel').value  = unit;
+
+  closeCalibDialog();
+  // Defer render so dialog close doesn't interfere
+  setTimeout(() => {
+    renderScaleZones();
+    renderActiveChip();
+    redraw();
+    updateMeasList();
+  }, 50);
+}
+
+// ── Add ratio zone dialog ─────────────────────────────────────────
+function openAddZoneDialog() {
+  if (!masterPxPerUnit) { alert('Calibrate a base scale first.'); return; }
+  document.getElementById('addZoneRatio').value = '20';
+  document.getElementById('addZoneCustomRatio').style.display = 'none';
+  document.getElementById('addZoneName').value = 'Detail 1:20';
+  updateAddZonePreview();
+  document.getElementById('addZoneDialog').classList.add('open');
+}
+function closeAddZoneDialog() { document.getElementById('addZoneDialog').classList.remove('open'); }
+
+function addZoneRatioChanged() {
+  const v = document.getElementById('addZoneRatio').value;
+  document.getElementById('addZoneCustomRatio').style.display = v === 'custom' ? 'block' : 'none';
+  updateAddZonePreview();
+}
+
+function updateAddZonePreview() {
+  if (!masterPxPerUnit) return;
+  const ratioSel = document.getElementById('addZoneRatio').value;
+  const ratio = ratioSel === 'custom'
+    ? parseFloat(document.getElementById('addZoneCustomRatio').value)
+    : parseFloat(ratioSel);
+  if (!ratio) return;
+  const realPerPx = (masterPxPerUnit * ratio).toPrecision(4);
+  document.getElementById('addZonePreview').textContent =
+    `1 PDF px = ${realPerPx} ${masterUnit} at 1:${ratio}`;
+  document.getElementById('addZoneName').value = `Zone 1:${ratio}`;
+}
+
+function confirmAddZone() {
+  const ratioSel = document.getElementById('addZoneRatio').value;
+  const ratio = ratioSel === 'custom'
+    ? parseFloat(document.getElementById('addZoneCustomRatio').value)
+    : parseFloat(ratioSel);
+  const name = document.getElementById('addZoneName').value.trim() || `1:${ratio}`;
+  if (!ratio) { alert('Enter a ratio.'); return; }
+  const id = 'zone_' + (zoneIdCounter++);
+  const color = zoneColor(scaleZones.length);
+  scaleZones.push({ id, name, ratio, pxPerUnit: masterPxPerUnit, unit: masterUnit, color });
+  activeZoneId = id;
+  document.getElementById('scaleVal').value = masterPxPerUnit * ratio;
+  document.getElementById('unitSel').value  = masterUnit;
+  closeAddZoneDialog();
+  setTimeout(() => { renderScaleZones(); renderActiveChip(); redraw(); updateMeasList(); }, 50);
+}
+
+// ── Assign zone to measurement ────────────────────────────────────
+function openOverrideDialog(idx) {
+  overrideTargetIdx = idx;
+  const m = measurements[idx];
+  const picker = document.getElementById('assignZonePicker');
+  picker.innerHTML = scaleZones.map(z => {
+    const act = m.zoneId === z.id;
+    return `<div class="zone-row ${act?'active-zone':''}" onclick="assignZone('${z.id}')">
+      <div class="zone-dot" style="background:${z.color}"></div>
+      <div class="zone-info">
+        <div class="zone-name">${z.name}</div>
+        <div class="zone-detail">1:${z.ratio} · 1px = ${(z.pxPerUnit*z.ratio).toPrecision(4)} ${z.unit}</div>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:var(--muted);font-size: var(--text-base)">No scale zones defined yet. Calibrate first.</p>';
+  document.getElementById('overrideDialog').classList.add('open');
+}
+
+function assignZone(id) {
+  if (overrideTargetIdx < 0) return;
+  measurements[overrideTargetIdx].zoneId = id;
+  // clear old override fields if present
+  delete measurements[overrideTargetIdx].scaleOverride;
+  delete measurements[overrideTargetIdx].unitOverride;
+  updateMeasList(); redraw(); closeOverrideDialog();
+}
+
+function closeOverrideDialog() { document.getElementById('overrideDialog').classList.remove('open'); }
+
+// ── Init ──────────────────────────────────────────────────────────
+function renderPresets() { renderScaleZones(); } // alias so old calls still work
+
+// ─────────────────────────────────────────────
+//  Drawing — live preview
+// ─────────────────────────────────────────────
+function drawLive() {
+  iCtx.clearRect(0,0,interactCanvas.width,interactCanvas.height);
+  iCtx.save();
+  const previewColor = COLORS[colorIdx % COLORS.length];
+  iCtx.strokeStyle = previewColor;
+  iCtx.fillStyle   = previewColor + '22';
+  iCtx.lineWidth=2; iCtx.setLineDash([6,3]);
+
+  const ss = p2s(startPdf.x,startPdf.y);
+  const ls = p2s(livePdf.x, livePdf.y);
+
+  if (currentTool==='line') {
+    const len=Math.hypot(livePdf.x-startPdf.x,livePdf.y-startPdf.y);
+    drawLineS(iCtx,ss.x,ss.y,ls.x,ls.y);
+    labelS(iCtx,(ss.x+ls.x)/2,(ss.y+ls.y)/2-11,fmt(len)+' '+getUnit(),previewColor);
+  } else if (currentTool==='rect') {
+    iCtx.strokeRect(ss.x,ss.y,ls.x-ss.x,ls.y-ss.y);
+    const w=Math.abs(livePdf.x-startPdf.x),h=Math.abs(livePdf.y-startPdf.y);
+    labelS(iCtx,(ss.x+ls.x)/2,(ss.y+ls.y)/2,fmt(w)+' × '+fmt(h)+' '+getUnit(),previewColor);
+  } else if (currentTool==='circle') {
+    const rs=Math.hypot(ls.x-ss.x,ls.y-ss.y),rp=Math.hypot(livePdf.x-startPdf.x,livePdf.y-startPdf.y);
+    iCtx.beginPath(); iCtx.arc(ss.x,ss.y,rs,0,Math.PI*2); iCtx.stroke(); iCtx.fill();
+    labelS(iCtx,ss.x,ss.y-rs-11,'r='+fmt(rp)+' '+getUnit(),previewColor);
+  }
+  iCtx.restore();
+
+  // Draw live endpoint snap indicator (current cursor)
+  drawSnapIndicator(iCtx);
+
+  // Draw frozen start point snap indicator (where the line began)
+  if (startSnapResult) {
+    const saved = snapResult;
+    snapResult = startSnapResult;
+    drawSnapIndicator(iCtx);
+    snapResult = saved;
+  }
+}
+
+function drawPolyLive(ctx) {
+  if (polyPoints.length===0) return;
+  const previewColor = COLORS[colorIdx % COLORS.length];
+  ctx.save(); ctx.strokeStyle=previewColor; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  const f=p2s(polyPoints[0].x,polyPoints[0].y); ctx.moveTo(f.x,f.y);
+  for (let i=1;i<polyPoints.length;i++){const s=p2s(polyPoints[i].x,polyPoints[i].y);ctx.lineTo(s.x,s.y);}
+  const lv=p2s(livePdf.x,livePdf.y); ctx.lineTo(lv.x,lv.y);
+  ctx.stroke();
+  // draw placed points
+  ctx.setLineDash([]);
+  polyPoints.forEach((pt,i)=>{
+    const s=p2s(pt.x,pt.y);
+    ctx.fillStyle=i===0?'#4eff91':previewColor;
+    ctx.beginPath(); ctx.arc(s.x,s.y,i===0?5:3,0,Math.PI*2); ctx.fill();
+  });
+  // snap ring near first point
+  if (polyPoints.length>2){
+    const d=Math.hypot(livePdf.x-polyPoints[0].x,livePdf.y-polyPoints[0].y);
+    if (d<12/zoom){
+      const fs=p2s(polyPoints[0].x,polyPoints[0].y);
+      ctx.strokeStyle='#4eff91'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(fs.x,fs.y,10,0,Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Drawing — committed measurements
+// ─────────────────────────────────────────────
+function redraw() {
+  mCtx.clearRect(0,0,measureCanvas.width,measureCanvas.height);
+  iCtx.clearRect(0,0,interactCanvas.width,interactCanvas.height);
+  measurements.forEach((m,i)=>{
+    if (m.page===pageNum && measVisible(m)) drawMeasurement(mCtx,m,i===selectedIdx,i===hoverIdx);
+  });
+  if (currentTool==='polygon' && polyPoints.length>0) drawPolyLive(iCtx);
+  if (currentTool==='chain'   && chainPoints.length>0) drawChainLive(iCtx);
+  if (currentTool==='angle'   && anglePoints.length>0) drawAngleLive(iCtx);
+  if (drawing) drawLive();
+  drawSnapIndicator(iCtx);
+}
+
+function drawMeasurement(ctx, m, sel, hov) {
+  ctx.save();
+  ctx.strokeStyle=m.color; ctx.fillStyle=m.color+'22';
+  ctx.lineWidth=sel?2.5:hov?2:1.8; ctx.setLineDash([]);
+
+  if (m.type==='line') {
+    const s1=p2s(m.x1,m.y1),s2=p2s(m.x2,m.y2);
+    const fmt = getMeasFmt(m);
+    const text = fmtM(Math.hypot(m.x2-m.x1,m.y2-m.y1),m);
+    drawDimLine(ctx, s1.x,s1.y,s2.x,s2.y, text, m.color, fmt);
+    if(sel) handles(ctx,[s1,s2]);
+  } else if (m.type==='rect') {
+    const s=p2s(m.x,m.y),sw=m.w*zoom,sh=m.h*zoom;
+    ctx.strokeRect(s.x,s.y,sw,sh); ctx.fillRect(s.x,s.y,sw,sh);
+    labelS(ctx,s.x+sw/2,s.y+sh/2,fmtM(Math.abs(m.w),m)+' × '+fmtM(Math.abs(m.h),m),m.color);
+    if(sel) handles(ctx,[p2s(m.x,m.y),p2s(m.x+m.w,m.y),p2s(m.x+m.w,m.y+m.h),p2s(m.x,m.y+m.h)]);
+  } else if (m.type==='circle') {
+    const cs=p2s(m.cx,m.cy),rs=m.r*zoom;
+    ctx.beginPath();ctx.arc(cs.x,cs.y,rs,0,Math.PI*2);ctx.stroke();ctx.fill();
+    labelS(ctx,cs.x,cs.y-rs-11,'r='+fmtM(m.r,m),m.color);
+    if(sel) handles(ctx,[cs,{x:cs.x+rs,y:cs.y},{x:cs.x-rs,y:cs.y},{x:cs.x,y:cs.y+rs},{x:cs.x,y:cs.y-rs}]);
+  } else if (m.type==='chain') {
+    if (m.points.length < 2) { ctx.restore(); return; }
+    ctx.beginPath();
+    const f=p2s(m.points[0].x,m.points[0].y); ctx.moveTo(f.x,f.y);
+    for (let i=1;i<m.points.length;i++){const s=p2s(m.points[i].x,m.points[i].y);ctx.lineTo(s.x,s.y);}
+    ctx.stroke();
+    // Segment labels
+    let running = 0;
+    for (let i=0;i<m.points.length-1;i++){
+      const a=m.points[i],b=m.points[i+1];
+      const segLen=Math.hypot(b.x-a.x,b.y-a.y);
+      running+=segLen;
+      const as=p2s(a.x,a.y),bs=p2s(b.x,b.y);
+      labelS(ctx,(as.x+bs.x)/2,(as.y+bs.y)/2-10,fmtM(segLen,m),m.color);
+      // Dot at each point
+      ctx.save();ctx.fillStyle=m.color;ctx.beginPath();
+      ctx.arc(as.x,as.y,3,0,Math.PI*2);ctx.fill();ctx.restore();
+    }
+    // Total at end
+    const ep=p2s(m.points[m.points.length-1].x,m.points[m.points.length-1].y);
+    ctx.save();ctx.fillStyle=m.color;ctx.beginPath();ctx.arc(ep.x,ep.y,3,0,Math.PI*2);ctx.fill();ctx.restore();
+    labelS(ctx,ep.x,ep.y+16,'Total: '+fmtM(running,m),m.color);
+    if(sel) handles(ctx,m.points.map(pt=>p2s(pt.x,pt.y)));
+  } else if (m.type==='count') {
+    const cf = getCountFmt(m);
+    const sizes = { s:10, m:16, l:24 };
+    const r = sizes[cf.markerSize] || 16;
+    m.points.forEach((pt,i)=>{
+      const s=p2s(pt.x,pt.y);
+      ctx.save();
+      ctx.setLineDash([]);
+
+      // Draw marker shape
+      ctx.beginPath();
+      if (cf.shape === 'square') {
+        ctx.rect(s.x-r, s.y-r, r*2, r*2);
+      } else if (cf.shape === 'diamond') {
+        ctx.moveTo(s.x, s.y-r); ctx.lineTo(s.x+r, s.y);
+        ctx.lineTo(s.x, s.y+r); ctx.lineTo(s.x-r, s.y);
+        ctx.closePath();
+      } else if (cf.shape === 'dot') {
+        ctx.arc(s.x, s.y, r*0.35, 0, Math.PI*2);
+      } else {
+        ctx.arc(s.x, s.y, r, 0, Math.PI*2);
+      }
+      // Fill first, then stroke outside (so stroke doesn't eat into interior)
+      ctx.fillStyle = m.color;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Number label — sized to fit inside the marker
+      if (cf.showNum !== 'hide' && cf.shape !== 'dot') {
+        const numStyle = cf.numStyle || '1';
+        const label = numStyle==='A' ? String.fromCharCode(65+i)
+                    : numStyle==='i' ? (['i','ii','iii','iv','v','vi','vii','viii','ix','x'][i] || String(i+1))
+                    : String(i+1);
+        const fontSize = Math.round(r * 1.1);  // font scales with marker
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, s.x, s.y);
+      }
+      ctx.restore();
+    });
+    if (m.points.length > 0) {
+      const last = p2s(m.points[m.points.length-1].x, m.points[m.points.length-1].y);
+      const countStr = (m.label ? m.label+': ' : '') + m.points.length;
+      labelS(ctx, last.x, last.y + r + 10, countStr, m.color);
+    }
+    if (sel) handles(ctx, m.points.map(pt => p2s(pt.x, pt.y)));
+  } else if (m.type==='angle') {
+    const as=p2s(m.ax,m.ay),vs=p2s(m.vx,m.vy),bs=p2s(m.bx,m.by);
+    ctx.beginPath();ctx.moveTo(as.x,as.y);ctx.lineTo(vs.x,vs.y);ctx.lineTo(bs.x,bs.y);ctx.stroke();
+    const a1=Math.atan2(m.ay-m.vy,m.ax-m.vx),a2=Math.atan2(m.by-m.vy,m.bx-m.vx);
+    ctx.beginPath();ctx.arc(vs.x,vs.y,18*zoom,a1,a2);ctx.stroke();
+    labelS(ctx,vs.x+22,vs.y-14,m.deg.toFixed(1)+'°',m.color);
+    if(sel) handles(ctx,[as,vs,bs]);
+  } else if (m.type==='polygon') {
+    const pts=m.points;
+    ctx.beginPath();
+    const f=p2s(pts[0].x,pts[0].y);ctx.moveTo(f.x,f.y);
+    for(let i=1;i<pts.length;i++){const s=p2s(pts[i].x,pts[i].y);ctx.lineTo(s.x,s.y);}
+    ctx.closePath(); ctx.stroke(); ctx.fill();
+    // centroid label
+    const cx=pts.reduce((s,p)=>s+p.x,0)/pts.length;
+    const cy=pts.reduce((s,p)=>s+p.y,0)/pts.length;
+    const ccs=p2s(cx,cy);
+    const perim=polyPerimeter(pts), area=polyArea(pts);
+    labelS(ctx,ccs.x,ccs.y,'P='+fmtM(perim,m),m.color);
+    if(sel){
+      handles(ctx,pts.map(pt=>p2s(pt.x,pt.y)));
+      labelS(ctx,ccs.x,ccs.y+16,'A='+fmtAreaM(area,m),m.color);
+    }
+  }
+  ctx.restore();
+}
+
+function drawChainLive(ctx) {
+  if (chainPoints.length === 0) return;
+  const previewColor = COLORS[colorIdx % COLORS.length];
+  ctx.save(); ctx.strokeStyle=previewColor; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  const f=p2s(chainPoints[0].x,chainPoints[0].y); ctx.moveTo(f.x,f.y);
+  for (let i=1;i<chainPoints.length;i++){const s=p2s(chainPoints[i].x,chainPoints[i].y);ctx.lineTo(s.x,s.y);}
+  const lv=p2s(livePdf.x,livePdf.y); ctx.lineTo(lv.x,lv.y);
+  ctx.stroke();
+  // Dots at placed points
+  ctx.setLineDash([]);
+  chainPoints.forEach(pt=>{
+    const s=p2s(pt.x,pt.y);
+    ctx.fillStyle=previewColor;ctx.beginPath();ctx.arc(s.x,s.y,3,0,Math.PI*2);ctx.fill();
+  });
+  // Live segment label
+  if (chainPoints.length>0){
+    const last=chainPoints[chainPoints.length-1];
+    const segPx=Math.hypot(livePdf.x-last.x,livePdf.y-last.y);
+    const lv2=p2s(livePdf.x,livePdf.y);
+    labelS(ctx,(p2s(last.x,last.y).x+lv2.x)/2,(p2s(last.y,last.y).y+lv2.y)/2-10,fmt(segPx)+' '+getUnit(),previewColor);
+  }
+  ctx.restore();
+}
+
+function drawAngleLive(ctx) {
+  if (anglePoints.length===0) return;
+  const previewColor = COLORS[colorIdx % COLORS.length];
+  ctx.save(); ctx.strokeStyle=previewColor; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  const a0s=p2s(anglePoints[0].x,anglePoints[0].y); ctx.moveTo(a0s.x,a0s.y);
+  if(anglePoints.length>=2){const a1s=p2s(anglePoints[1].x,anglePoints[1].y);ctx.lineTo(a1s.x,a1s.y);}
+  const lv=p2s(livePdf.x,livePdf.y); ctx.lineTo(lv.x,lv.y);
+  ctx.stroke();
+  if(anglePoints.length===2){
+    const deg=calcAngle(anglePoints[0],anglePoints[1],livePdf);
+    const vs=p2s(anglePoints[1].x,anglePoints[1].y);
+    labelS(ctx,vs.x+14,vs.y-12,deg.toFixed(1)+'°',previewColor);
+  }
+  ctx.restore();
+}
+
+function drawLineS(ctx,x1,y1,x2,y2) {
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  const ang=Math.atan2(y2-y1,x2-x1),cap=6;
+  [[x1,y1],[x2,y2]].forEach(([cx,cy])=>{
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(ang+Math.PI/2)*cap,cy+Math.sin(ang+Math.PI/2)*cap);
+    ctx.lineTo(cx-Math.cos(ang+Math.PI/2)*cap,cy-Math.sin(ang+Math.PI/2)*cap);
+    ctx.stroke();
+  });
+}
+
+function labelS(ctx,x,y,text,color) {
+  ctx.save(); ctx.setLineDash([]);
+  ctx.font='11px Courier New,monospace';
+  const w=ctx.measureText(text).width;
+  ctx.fillStyle='var(--overlay-darker)'; ctx.fillRect(x-w/2-4,y-9,w+8,16);
+  ctx.fillStyle=color; ctx.textAlign='center'; ctx.fillText(text,x,y+3);
+  ctx.restore();
+}
+
+function handles(ctx, pts) {
+  ctx.save(); ctx.setLineDash([]);
+  pts.forEach((p, i) => {
+    // outer ring
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2); ctx.fill();
+    // inner fill
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
+    // ring stroke
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2); ctx.stroke();
+  });
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Result panel
+// ─────────────────────────────────────────────
+function showMeasResult(m) {
+  if      (m.type==='line')    showResult('line',   Math.hypot(m.x2-m.x1,m.y2-m.y1));
+  else if (m.type==='rect')    showResult('rect',   Math.abs(m.w),Math.abs(m.h));
+  else if (m.type==='circle')  showResult('circle', m.r);
+  else if (m.type==='angle')   showResultAngle(m.deg);
+  else if (m.type==='polygon') showResultPoly(polyPerimeter(m.points), polyArea(m.points));
+}
+
+function showResult(type, ...args) {
+  const u=getUnit();
+  if (type==='line') {
+    const [px]=args;
+    setResult(fmt(px)+' '+u,'Straight-line distance',`
+      <div class="result-cell"><div class="label">PDF px</div><div class="val">${px.toFixed(1)}</div></div>
+      <div class="result-cell"><div class="label">Scale</div><div class="val">1px=${getScale()} ${u}</div></div>`);
+  } else if (type==='rect') {
+    const [w,h]=args;
+    setResult(fmt(w)+' × '+fmt(h)+' '+u,'Width × Height',`
+      <div class="result-cell"><div class="label">Width</div><div class="val">${fmt(w)} ${u}</div></div>
+      <div class="result-cell"><div class="label">Height</div><div class="val">${fmt(h)} ${u}</div></div>
+      <div class="result-cell"><div class="label">Area</div><div class="val">${fmtArea(w*h)} ${u}²</div></div>
+      <div class="result-cell"><div class="label">Perimeter</div><div class="val">${fmt(2*(w+h))} ${u}</div></div>`);
+  } else if (type==='circle') {
+    const [r]=args;
+    setResult('r = '+fmt(r)+' '+u,'Radius',`
+      <div class="result-cell"><div class="label">Radius</div><div class="val">${fmt(r)} ${u}</div></div>
+      <div class="result-cell"><div class="label">Diameter</div><div class="val">${fmt(r*2)} ${u}</div></div>
+      <div class="result-cell"><div class="label">Area</div><div class="val">${fmtArea(Math.PI*r*r)} ${u}²</div></div>
+      <div class="result-cell"><div class="label">Circumference</div><div class="val">${fmt(2*Math.PI*r)} ${u}</div></div>`);
+  }
+}
+
+function showResultAngle(deg) {
+  setResult(deg.toFixed(2)+'°','Angle between two lines',`
+    <div class="result-cell"><div class="label">Degrees</div><div class="val">${deg.toFixed(3)}°</div></div>
+    <div class="result-cell"><div class="label">Radians</div><div class="val">${(deg*Math.PI/180).toFixed(4)}</div></div>
+    <div class="result-cell"><div class="label">Complement</div><div class="val">${(90-deg).toFixed(1)}°</div></div>
+    <div class="result-cell"><div class="label">Supplement</div><div class="val">${(180-deg).toFixed(1)}°</div></div>`);
+}
+
+function showResultPoly(perim, area) {
+  const u=getUnit();
+  setResult('P = '+fmt(perim)+' '+u,'Polygon perimeter & area',`
+    <div class="result-cell"><div class="label">Perimeter</div><div class="val">${fmt(perim)} ${u}</div></div>
+    <div class="result-cell"><div class="label">Area</div><div class="val">${fmtArea(area)} ${u}²</div></div>`);
+}
+
+function setResult(main,sub,grid) {
+  document.getElementById('resultMain').textContent=main;
+  document.getElementById('resultSub').textContent=sub;
+  document.getElementById('resultGrid').innerHTML=grid;
+}
+
+// ─────────────────────────────────────────────
+//  Groups
+// ─────────────────────────────────────────────
+
+function addGroup(name) {
+  const n = name || prompt('Group name:', 'New Group');
+  if (!n) return;
+  saveUndo();
+  const id = 'grp_' + (groupIdCounter++);
+  groups.push({ id, name: n.trim(), color: nextGroupColor(), visible: true, collapsed: false });
+  activeGroupId = id;
+  renderGroupList();
+  updateMeasList();
+}
+
+function deleteGroup(id) {
+  saveUndo();
+  measurements.forEach(m => { if (m.groupId === id) delete m.groupId; });
+  groups = groups.filter(g => g.id !== id);
+  if (activeGroupId === id) activeGroupId = groups[0]?.id || null;
+  if (soloGroupId   === id) soloGroupId   = null;
+  renderGroupList(); updateMeasList(); redraw();
+}
+
+function toggleGroupVisibility(id, e) {
+  e.stopPropagation();
+  const g = groups.find(g => g.id === id);
+  if (g) { g.visible = !g.visible; renderGroupList(); updateMeasList(); redraw(); }
+}
+
+function toggleGroupCollapse(id) {
+  const g = groups.find(g => g.id === id);
+  if (g) { g.collapsed = !g.collapsed; updateMeasList(); }
+}
+
+function soloGroup(id) {
+  // Toggle solo — clicking the same group again restores all
+  soloGroupId = (soloGroupId === id) ? null : id;
+  renderGroupList();
+  updateMeasList();
+  redraw();
+}
+
+function setActiveGroup(id) {
+  activeGroupId = (id === activeGroupId) ? null : id;
+  updateMeasList();
+}
+
+function renderActiveGroupBar() {
+  const chips = document.getElementById('activeGroupChips');
+  if (!chips) return;
+  // Ungrouped chip
+  const noneActive = activeGroupId === null;
+  let html = `<span class="active-group-chip ${noneActive ? 'selected' : ''}"
+    style="background:${noneActive ? 'var(--muted)' : 'var(--surface)'};color:${noneActive ? '#fff' : 'var(--muted)'};border-color:${noneActive ? 'var(--muted)' : 'transparent'}"
+    onclick="setActiveGroup(null)" title="New measurements go to Ungrouped">None</span>`;
+  groups.forEach(g => {
+    const act = g.id === activeGroupId;
+    html += `<span class="active-group-chip ${act ? 'selected' : ''}"
+      style="background:${act ? g.color : g.color+'22'};color:${act ? '#fff' : g.color};border-color:${act ? g.color : 'transparent'}"
+      onclick="setActiveGroup('${g.id}')" title="Add new measurements to ${g.name}">${g.name}</span>`;
+  });
+  chips.innerHTML = html;
+}
+
+function renameGroup(id, el) {
+  el.contentEditable = 'true';
+  el.classList.add('editing');
+  el.focus();
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  const finish = () => {
+    el.contentEditable = 'false';
+    el.classList.remove('editing');
+    const g = groups.find(g => g.id === id);
+    if (g) g.name = el.textContent.trim() || g.name;
+    el.textContent = g ? g.name : el.textContent;
+    updateMeasList();
+  };
+  el.addEventListener('blur', finish, { once: true });
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+}
+
+function toggleUngroupedVisibility(e) {
+  e.stopPropagation();
+  ungroupedVisible = !ungroupedVisible;
+  renderGroupList(); updateMeasList(); redraw();
+}
+
+function renderGroupList(selectedGroupId) {
+  // Group list panel removed — groups are shown as headings in the measurement list
+  // Just trigger a measurement list update to refresh headings
+  updateMeasList();
+}
+
+// Is this measurement visible on canvas?
+function measVisible(m) {
+  // Solo mode: only the soloed group shows
+  if (soloGroupId !== null) return m.groupId === soloGroupId;
+  // Normal mode: hidden groups are invisible
+  if (!m.groupId) return ungroupedVisible;
+  const g = groups.find(g => g.id === m.groupId);
+  return g ? g.visible : true;
+}
+
+// ── Unified measurement detail dialog ────────────────────────────
+function openMeasDetailDialog(idx) {
+  assignGroupTargetIdx = idx;
+  overrideTargetIdx    = idx;
+  const m = measurements[idx];
+  if (!m) return;
+
+  // Title
+  const FULL = {line:'📏 Line',rect:'▭ Rectangle',circle:'○ Circle',angle:'∠ Angle',polygon:'⬡ Polygon',chain:'⛓ Chain',count:'⊕ Count'};
+  document.getElementById('measDetailTitle').textContent = FULL[m.type] || m.type;
+
+  // Value display
+  let mainVal = '', subVal = '';
+  if (m.type==='line')    { mainVal=fmtM(Math.hypot(m.x2-m.x1,m.y2-m.y1),m); subVal='Straight-line distance'; }
+  else if (m.type==='chain')   { mainVal=fmtM(chainLength(m.points),m); subVal='Total chain length · '+m.points.length+' segments'; }
+  else if (m.type==='count')   { mainVal=(m.points.length)+' items'; subVal=m.label||'No label set'; }
+  else if (m.type==='rect')   { mainVal=fmtM(Math.abs(m.w),m)+' × '+fmtM(Math.abs(m.h),m); subVal='Width × Height'; }
+  else if (m.type==='circle') { mainVal='r = '+fmtM(m.r,m); subVal='Radius'; }
+  else if (m.type==='angle')  { mainVal=m.deg.toFixed(3)+'°'; subVal='Angle'; }
+  else if (m.type==='polygon'){ mainVal='P = '+fmtM(polyPerimeter(m.points),m); subVal='Perimeter · '+m.points.length+' points'; }
+  document.getElementById('measDetailValue').textContent = mainVal;
+  document.getElementById('measDetailSub').textContent   = subVal;
+
+  // Extra stats grid
+  let grid = '';
+  const mz = zoneForMeas(m);
+  if (m.type==='rect') {
+    grid += `<div class="result-cell"><div class="label">Area</div><div class="val">${fmtAreaM(Math.abs(m.w)*Math.abs(m.h),m)}</div></div>`;
+    grid += `<div class="result-cell"><div class="label">Perimeter</div><div class="val">${fmtM(2*(Math.abs(m.w)+Math.abs(m.h)),m)}</div></div>`;
+  } else if (m.type==='circle') {
+    grid += `<div class="result-cell"><div class="label">Diameter</div><div class="val">${fmtM(m.r*2,m)}</div></div>`;
+    grid += `<div class="result-cell"><div class="label">Area</div><div class="val">${fmtAreaM(Math.PI*m.r*m.r,m)}</div></div>`;
+    grid += `<div class="result-cell"><div class="label">Circumference</div><div class="val">${fmtM(2*Math.PI*m.r,m)}</div></div>`;
+  } else if (m.type==='polygon') {
+    grid += `<div class="result-cell"><div class="label">Area</div><div class="val">${fmtAreaM(polyArea(m.points),m)}</div></div>`;
+    grid += `<div class="result-cell"><div class="label">Points</div><div class="val">${m.points.length}</div></div>`;
+  } else if (m.type==='angle') {
+    grid += `<div class="result-cell"><div class="label">Radians</div><div class="val">${(m.deg*Math.PI/180).toFixed(4)}</div></div>`;
+    grid += `<div class="result-cell"><div class="label">Complement</div><div class="val">${(90-m.deg).toFixed(1)}°</div></div>`;
+  }
+  if (m.type==='line') {
+    grid += `<div class="result-cell"><div class="label">PDF px</div><div class="val">${Math.hypot(m.x2-m.x1,m.y2-m.y1).toFixed(1)}</div></div>`;
+  }
+  document.getElementById('measDetailGrid').innerHTML = grid;
+
+  // Scale zone picker
+  const zpicker = document.getElementById('measDetailZonePicker');
+  zpicker.innerHTML = (scaleZones.length ? scaleZones.map(z =>
+    `<div class="zone-row ${m.zoneId===z.id?'active-zone':''}" onclick="assignZoneFromDetail('${z.id}')">
+      <div class="zone-dot" style="background:${z.color}"></div>
+      <div class="zone-info"><div class="zone-name">${z.name}</div><div class="zone-detail">1:${z.ratio}</div></div>
+    </div>`).join('') : '<div style="font-size: var(--text-sm);color:var(--muted)">No scale zones — calibrate first.</div>');
+
+  // Group picker
+  const gpicker = document.getElementById('measDetailGroupPicker');
+  gpicker.innerHTML =
+    `<div class="group-row ${!m.groupId?'active-group':''}" onclick="assignGroupFromDetail(null)">
+      <div class="group-dot" style="background:var(--muted)"></div>
+      <div class="group-name-text" style="color:var(--muted)">Ungrouped</div>
+    </div>` +
+    groups.map(g =>
+      `<div class="group-row ${m.groupId===g.id?'active-group':''}" onclick="assignGroupFromDetail('${g.id}')">
+        <div class="group-dot" style="background:${g.color}"></div>
+        <div class="group-name-text">${g.name}</div>
+      </div>`).join('') +
+    `<div class="group-row" onclick="newGroupFromDetail()" style="border-style:dashed">
+      <div class="group-dot" style="background:var(--muted)"></div>
+      <div class="group-name-text" style="color:var(--muted)">+ New group…</div>
+    </div>`;
+
+  // Show count label field for count measurements
+  const countSec = document.getElementById('countLabelSection');
+  if (countSec) {
+    countSec.style.display = m.type === 'count' ? 'block' : 'none';
+    if (m.type === 'count') document.getElementById('countLabelInput').value = m.label || '';
+  }
+  document.getElementById('measDetailDialog').classList.add('open');
+}
+
+function applyCountLabel() {
+  if (overrideTargetIdx < 0) return;
+  const label = document.getElementById('countLabelInput').value.trim();
+  measurements[overrideTargetIdx].label = label;
+  updateMeasList(); redraw();
+  openMeasDetailDialog(overrideTargetIdx);
+}
+
+function closeMeasDetailDialog() {
+  document.getElementById('measDetailDialog').classList.remove('open');
+  renderGroupList(); updateMeasList(); redraw();
+}
+
+function assignZoneFromDetail(zoneId) {
+  if (overrideTargetIdx < 0) return;
+  saveUndo();
+  measurements[overrideTargetIdx].zoneId = zoneId;
+  openMeasDetailDialog(overrideTargetIdx); // refresh in place
+}
+
+function assignGroupFromDetail(groupId) {
+  if (assignGroupTargetIdx < 0) return;
+  saveUndo();
+  if (groupId) measurements[assignGroupTargetIdx].groupId = groupId;
+  else delete measurements[assignGroupTargetIdx].groupId;
+  openMeasDetailDialog(assignGroupTargetIdx); // refresh in place
+}
+
+function newGroupFromDetail() {
+  const n = prompt('New group name:', 'New Group');
+  if (!n) return;
+  const id = 'grp_' + (groupIdCounter++);
+  groups.push({ id, name: n.trim(), color: nextGroupColor(), visible: true, collapsed: false });
+  if (assignGroupTargetIdx >= 0) measurements[assignGroupTargetIdx].groupId = id;
+  openMeasDetailDialog(assignGroupTargetIdx);
+}
+
+function deleteMeasFromDetail() {
+  const idx = assignGroupTargetIdx;
+  closeMeasDetailDialog();
+  if (idx >= 0) deleteMeas(idx);
+}
+
+// Legacy shims so old dialog code paths still work
+function openAssignGroupDialog(idx) { openMeasDetailDialog(idx); }
+function assignGroupTo(groupId) { assignGroupFromDetail(groupId); }
+function addGroupThenAssign() { newGroupFromDetail(); }
+
+// ─────────────────────────────────────────────
+//  Sidebar measurement list
+// ─────────────────────────────────────────────
+const ICONS={line:'📏',rect:'▭',circle:'○',angle:'∠',polygon:'⬡',chain:'⛓',count:'⊕'};
+
+function measLabel(m) {
+  if (m.type==='line')    return fmtM(Math.hypot(m.x2-m.x1,m.y2-m.y1),m);
+  if (m.type==='rect')    return fmtM(Math.abs(m.w),m)+' × '+fmtM(Math.abs(m.h),m);
+  if (m.type==='circle')  return 'r='+fmtM(m.r,m);
+  if (m.type==='angle')   return m.deg.toFixed(2)+'°';
+  if (m.type==='polygon') return 'P='+fmtM(polyPerimeter(m.points),m);
+  if (m.type==='chain')   return fmtM(chainLength(m.points),m)+' ('+m.points.length+' pts)';
+  if (m.type==='count')   return (m.label?m.label+': ':'')+m.points.length+' items'+(m._active?' ●':'');
+  return '';
+}
+
+// Compact inline totals string for group heading — only shows what exists
+function groupTotalsInline(mList) {
+  let totalLength = 0, totalPerim = 0, totalArea = 0, totalCount = 0;
+  let lengthUnit = '', perimUnit = '', areaUnit = '', countLabel = '';
+
+  mList.forEach(({m}) => {
+    const z = zoneForMeas(m);
+    const s = z ? z.pxPerUnit * z.ratio : getScale();
+    const u = z ? z.unit : getUnit();
+    if (m.type === 'line') {
+      totalLength += Math.hypot(m.x2-m.x1, m.y2-m.y1) * s;
+      lengthUnit = u;
+    } else if (m.type === 'chain') {
+      totalLength += chainLength(m.points) * s;
+      lengthUnit = u;
+    } else if (m.type === 'count') {
+      totalCount += m.points.length;
+      if (m.label) countLabel = m.label;
+    } else if (m.type === 'rect') {
+      totalPerim += 2*(Math.abs(m.w)+Math.abs(m.h)) * s; perimUnit = u;
+      totalArea  += Math.abs(m.w)*Math.abs(m.h) * s * s; areaUnit = u;
+    } else if (m.type === 'circle') {
+      totalPerim += 2*Math.PI*m.r * s; perimUnit = u;
+      totalArea  += Math.PI*m.r*m.r * s * s; areaUnit = u;
+    } else if (m.type === 'polygon') {
+      totalPerim += polyPerimeter(m.points) * s; perimUnit = u;
+      totalArea  += polyArea(m.points) * s * s; areaUnit = u;
+    }
+  });
+
+  const fv = v => v < 10 ? v.toFixed(2) : v.toFixed(1);
+  const parts = [];
+  if (totalLength > 0) parts.push(`Length: ${fv(totalLength)} ${lengthUnit}`);
+  if (totalCount  > 0) parts.push(`Count: ${totalCount}${countLabel?' '+countLabel:''}`);
+  if (totalPerim  > 0) parts.push(`Perim: ${fv(totalPerim)} ${perimUnit}`);
+  if (totalArea   > 0) {
+    let areaM2 = totalArea;
+    if (areaUnit==='mm')      areaM2 = totalArea / 1_000_000;
+    else if (areaUnit==='cm') areaM2 = totalArea / 10_000;
+    else if (areaUnit==='ft') areaM2 = totalArea / 10.764;
+    else if (areaUnit==='in') areaM2 = totalArea / 1550;
+    parts.push(`Area: ${areaM2 < 10 ? areaM2.toFixed(3) : areaM2.toFixed(2)} m²`);
+  }
+  return parts.join('  ·  ');
+}
+
+// Legacy totals bar — kept for compatibility but no longer rendered in UI
+function groupTotalsHTML(mList, color) {
+  let totalLength = 0, totalPerim = 0, totalArea = 0, hasAngle = false;
+  let lengthUnit = '', perimUnit = '', areaUnit = '';
+
+  mList.forEach(({m}) => {
+    if (m.type === 'line') {
+      totalLength += Math.hypot(m.x2-m.x1, m.y2-m.y1) * (zoneForMeas(m)?.pxPerUnit||getScale()) * (zoneForMeas(m)?.ratio||1);
+      lengthUnit = zoneForMeas(m)?.unit || getUnit();
+    } else if (m.type === 'rect') {
+      const z = zoneForMeas(m);
+      const s = z ? z.pxPerUnit * z.ratio : getScale();
+      const u = z ? z.unit : getUnit();
+      totalPerim += 2*(Math.abs(m.w)+Math.abs(m.h)) * s; perimUnit = u;
+      totalArea  += Math.abs(m.w)*Math.abs(m.h) * s * s; areaUnit = u;
+    } else if (m.type === 'circle') {
+      const z = zoneForMeas(m);
+      const s = z ? z.pxPerUnit * z.ratio : getScale();
+      const u = z ? z.unit : getUnit();
+      totalPerim += 2*Math.PI*m.r * s; perimUnit = u;
+      totalArea  += Math.PI*m.r*m.r * s * s; areaUnit = u;
+    } else if (m.type === 'polygon') {
+      const z = zoneForMeas(m);
+      const s = z ? z.pxPerUnit * z.ratio : getScale();
+      const u = z ? z.unit : getUnit();
+      totalPerim += polyPerimeter(m.points) * s; perimUnit = u;
+      totalArea  += polyArea(m.points) * s * s; areaUnit = u;
+    } else if (m.type === 'angle') {
+      hasAngle = true;
+    }
+  });
+
+  const fv = v => v < 10 ? v.toFixed(3) : v < 1000 ? v.toFixed(2) : v.toFixed(1);
+  const fva = (v, u) => {
+    // Convert area to m² if base unit is mm or cm
+    if (u === 'mm') return (v / 1e6).toFixed(3) + ' m²';
+    if (u === 'cm') return (v / 1e4).toFixed(3) + ' m²';
+    return (v < 10 ? v.toFixed(3) : v.toFixed(2)) + ' ' + u + '²';
+  };
+  const parts = [];
+  if (totalLength > 0) parts.push(`<span title="Total line length">Length: ${fv(totalLength)} ${lengthUnit}</span>`);
+  if (totalPerim  > 0) parts.push(`<span title="Total perimeter">Perim: ${fv(totalPerim)} ${perimUnit}</span>`);
+  if (totalArea   > 0) {
+    let areaM2 = totalArea;
+    if (areaUnit === 'mm')      areaM2 = totalArea / 1_000_000;
+    else if (areaUnit === 'cm') areaM2 = totalArea / 10_000;
+    else if (areaUnit === 'ft') areaM2 = totalArea / 10.764;
+    else if (areaUnit === 'in') areaM2 = totalArea / 1550;
+    parts.push(`<span title="Total area">Area: ${areaM2 < 10 ? areaM2.toFixed(3) : areaM2.toFixed(2)} m²</span>`);
+  }
+  if (!parts.length) return '';
+
+  return `<div style="display:flex;flex-wrap:wrap;gap:var(--space-4);padding:5px 8px 6px 24px;font-size: var(--text-xs);font-family:var(--font-mono);color:${color};background:${color}11;border-bottom:1px solid var(--border)">
+    <span style="color:var(--muted);font-size: var(--text-2xs);text-transform:uppercase;letter-spacing:0.07em;align-self:center">Totals:</span>
+    ${parts.join('')}
+  </div>`;
+}
+
+function measItemHTML(m, i) {
+  const mz  = zoneForMeas(m);
+  const zoneChip = mz
+    ? `<span style="font-size: var(--text-2xs);font-family:var(--font-mono);background:${mz.color}22;color:${mz.color};border-radius:var(--radius-xs);padding:1px 5px">1:${mz.ratio}</span>`
+    : `<span style="font-size: var(--text-2xs);color:var(--muted)">no scale</span>`;
+  return `<div class="meas-item ${i===selectedIdx?'selected':''}" data-action="select" data-idx="${i}">
+    <div class="meas-dot" style="background:${m.color}"></div>
+    <div class="meas-info">
+      <div style="display:flex;align-items:baseline;gap:var(--space-3);flex-wrap:wrap">
+        <span class="meas-type" style="white-space:nowrap">${ICONS[m.type]||'?'} ${m.type}</span>
+        <span class="meas-val">${measLabel(m)}</span>
+      </div>
+      <div style="margin-top:2px">${zoneChip}</div>
+    </div>
+    <button class="meas-del" data-action="edit" data-idx="${i}" title="Edit measurement" style="font-size: var(--text-sm);color:var(--gold)">✎</button>
+    <button class="meas-del" data-action="delete" data-idx="${i}" title="Delete">×</button>
+  </div>`;
+}
+
+function updateMeasList() {
+  const list = document.getElementById('measList');
+  const onPage = measurements.map((m,i) => ({m,i})).filter(({m}) => m.page === pageNum);
+  if (!onPage.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size: var(--text-sm);padding:var(--space-5);text-align:center">No measurements yet</div>';
+    return;
+  }
+
+  let html = '';
+
+  // Render each group section
+  groups.forEach(g => {
+    const gMeas = onPage.filter(({m}) => m.groupId === g.id);
+    if (!gMeas.length) return;
+    const hidden  = !g.visible && soloGroupId === null;
+    const soloed  = soloGroupId === g.id;
+    const dimmed  = soloGroupId !== null && !soloed;
+    const isActive = g.id === activeGroupId;
+    const col = (hidden || dimmed) ? 'var(--muted)' : g.color;
+    const totals = groupTotalsInline(gMeas);
+    html += `<div class="group-heading ${soloed ? 'solo-heading' : ''}"
+      style="${dimmed?'opacity:0.4':''}${isActive ? `;outline:2px solid ${g.color};outline-offset:-2px;border-radius:var(--radius-sm);background:${g.color}18` : ''}"
+      onclick="setActiveGroup('${g.id}')"
+      title="${isActive ? 'Active — new measurements go here. Click to deselect.' : 'Click to add new measurements to this group'}">
+      <div style="display:flex;flex-direction:column;flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:4px">
+          <div class="group-heading-dot" style="background:${col}"></div>
+          <span class="group-heading-name" style="color:${col}">${g.name}${isActive ? ' ✚' : ''}${soloed?' 👁':''}</span>
+          <span class="group-heading-count">${gMeas.length}</span>
+        </div>
+        ${totals ? `<div style="font-size: var(--text-2xs);color:${col};opacity:0.8;font-family:var(--font-mono);padding-left:13px;margin-top:2px;white-space:normal;line-height:1.6">${totals}</div>` : ''}
+      </div>
+      <button onclick="toggleGroupVisibility('${g.id}',event)" title="${g.visible?'Hide group':'Show group'}"
+        style="background:none;border:none;cursor:pointer;font-size: var(--text-base);padding:0 3px;color:${g.visible?'var(--gold)':'var(--muted)'};opacity:1;flex-shrink:0"
+      >${g.visible?'👁':'👁‍🗨'}</button>
+      <span onclick="event.stopPropagation();soloGroup('${g.id}')" title="${soloed?'Show all':'Isolate on canvas'}"
+        style="cursor:pointer;font-size: var(--text-xs);color:var(--muted);padding:0 2px;flex-shrink:0">⊙</span>
+      <span class="group-heading-toggle" style="cursor:pointer;padding:0 4px;flex-shrink:0" onclick="event.stopPropagation();toggleGroupCollapse('${g.id}')">${g.collapsed ? '▸' : '▾'}</span>
+    </div>`;
+    if (!g.collapsed && g.visible) {
+      gMeas.forEach(({m,i}) => { html += measItemHTML(m, i); });
+    } else if (!g.visible) {
+      html += `<div style="font-size: var(--text-xs);color:var(--muted);padding:4px 8px 6px;font-style:italic">Group hidden — click 👁 to show</div>`;
+    }
+  });
+
+  // Ungrouped section
+  const ungrouped = onPage.filter(({m}) => !m.groupId);
+  if (ungrouped.length) {
+    if (groups.length) {
+      const noneActive = activeGroupId === null;
+      html += `<div class="group-heading" style="margin-top:4px;cursor:pointer${noneActive?';outline:2px solid var(--muted);outline-offset:-2px;border-radius:var(--radius-sm);background:rgba(136,146,164,0.1)':''}"
+        onclick="setActiveGroup(null)" title="${noneActive?'Active — new measurements go here. Click to deselect.':'Click to add new measurements to Ungrouped'}">
+        <div class="group-heading-dot" style="background:${ungroupedVisible?'var(--muted)':'var(--border)'}"></div>
+        <span class="group-heading-name" style="color:var(--muted);flex:1;${!ungroupedVisible?'text-decoration:line-through':''}">Ungrouped${noneActive?' ✚':''}</span>
+        <span class="group-heading-count">${ungrouped.length}</span>
+        <button onclick="toggleUngroupedVisibility(event)" title="${ungroupedVisible?'Hide ungrouped':'Show ungrouped'}"
+          style="background:none;border:none;cursor:pointer;font-size: var(--text-base);padding:0 3px;color:${ungroupedVisible?'var(--gold)':'var(--muted)'};opacity:1"
+        >${ungroupedVisible?'👁':'👁‍🗨'}</button>
+      </div>`;
+    }
+    ungrouped.forEach(({m,i}) => { html += measItemHTML(m, i); });
+  }
+
+  list.innerHTML = html;
+}
+
+function selectMeas(i) {
+  selectedIdx = i;
+  // Update selected class without full rerender
+  document.querySelectorAll('#measList .meas-item').forEach(el => {
+    const elIdx = parseInt(el.dataset.idx);
+    el.classList.toggle('selected', elIdx === i);
+  });
+  redraw();
+  if (!measurements[i]) return;
+  const m = measurements[i];
+  showMeasResult(m);
+  // Reflect this measurement's zone and group in the sidebar panels
+  renderScaleZones(m.zoneId || null);
+  renderGroupList(m.groupId || null);
+}
+function deleteMeas(i) {
+  saveUndo();
+  measurements.splice(i,1);
+  if(selectedIdx>=measurements.length) selectedIdx=measurements.length-1;
+  updateMeasList(); redraw();
+}
+function clearAll() {
+  saveUndo();
+  measurements=measurements.filter(m=>m.page!==pageNum);
+  selectedIdx=-1; updateMeasList(); redraw();
+  setResult('—','','');
+}
+
+// ─────────────────────────────────────────────
+//  Export CSV
+// ─────────────────────────────────────────────
+function exportCSV() {
+  const u=getUnit();
+  const rows=[['#','Group','Type','Page','Value','Unit','Detail']];
+  measurements.forEach((m,i)=>{
+    const grp = m.groupId ? (groups.find(g=>g.id===m.groupId)?.name||'') : '';
+    if(m.type==='line') rows.push([i+1,grp,'Line',m.page,fmt(Math.hypot(m.x2-m.x1,m.y2-m.y1)),u,'']);
+    else if(m.type==='rect') rows.push([i+1,grp,'Rectangle',m.page,fmt(Math.abs(m.w))+' × '+fmt(Math.abs(m.h)),u,'Area='+fmtArea(Math.abs(m.w)*Math.abs(m.h))+' '+u+'²']);
+    else if(m.type==='circle') rows.push([i+1,grp,'Circle',m.page,'r='+fmt(m.r),u,'Area='+fmtArea(Math.PI*m.r*m.r)+' '+u+'²']);
+    else if(m.type==='angle') rows.push([i+1,grp,'Angle',m.page,m.deg.toFixed(3),'°','']);
+    else if(m.type==='polygon') rows.push([i+1,grp,'Polygon',m.page,'P='+fmt(polyPerimeter(m.points)),u,'Area='+fmtArea(polyArea(m.points))+' '+u+'² | pts='+m.points.length]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='measurements.csv'; a.click();
+}
+
+// ─────────────────────────────────────────────
+//  Calibration
+// ─────────────────────────────────────────────
+
+// Return all line measurements on the current page
+function getPageLines() {
+  return measurements
+    .map((m, i) => ({ m, i }))
+    .filter(({ m }) => m.type === 'line' && m.page === pageNum);
+}
+
+// Populate a <select> with line options. keepValue: preserve current selection if possible.
+function populateLinePicker(selectId, includeManual = true) {
+  const sel = document.getElementById(selectId);
+  const prev = sel.value;
+
+  // Remove existing line options (keep 'last' and 'manual')
+  Array.from(sel.options).forEach(o => {
+    if (o.value !== 'last' && o.value !== 'manual') sel.remove(o.index);
+  });
+
+  const lines = getPageLines();
+  // Insert line options after 'last'
+  lines.forEach(({ m, i }) => {
+    const pdfPx = Math.hypot(m.x2 - m.x1, m.y2 - m.y1);
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `Line #${i + 1}  (${pdfPx.toFixed(1)} px)`;
+    // Insert before 'manual'
+    const manualOpt = sel.querySelector('option[value="manual"]');
+    sel.insertBefore(opt, manualOpt);
+  });
+
+  // Restore previous selection if it still exists, else default to 'last' or first line
+  const values = Array.from(sel.options).map(o => o.value);
+  if (values.includes(prev)) {
+    sel.value = prev;
+  } else if (lines.length > 0) {
+    sel.value = String(lines[lines.length - 1].i); // default to most recently added line
+  } else {
+    sel.value = lastLinePdfPx > 0 ? 'last' : 'manual';
+  }
+}
+
+// Sync the px input from whichever picker value is selected
+function syncPxFromPicker(pickerId, pxId) {
+  const val = document.getElementById(pickerId).value;
+  const pxInput = document.getElementById(pxId);
+  if (val === 'last') {
+    pxInput.value = lastLinePdfPx > 0 ? lastLinePdfPx.toFixed(4) : '';
+    pxInput.readOnly = true;
+  } else if (val === 'manual') {
+    pxInput.readOnly = false;
+    pxInput.focus();
+  } else {
+    const idx = parseInt(val);
+    const m = measurements[idx];
+    if (m && m.type === 'line') {
+      pxInput.value = Math.hypot(m.x2 - m.x1, m.y2 - m.y1).toFixed(4);
+    }
+    pxInput.readOnly = true;
+  }
+}
+
+
+// ─────────────────────────────────────────────
+//  Save Job
+// ─────────────────────────────────────────────
+function openSaveDialog() {
+  if (!pdfDoc) { alert('Open a PDF first.'); return; }
+  const n=measurements.filter(m=>m.page===pageNum).length;
+  const tot=measurements.length;
+  document.getElementById('saveInfo').innerHTML=
+    `<strong>PDF:</strong> ${pdfFileName}<br>
+     <strong>Pages:</strong> ${totalPages}<br>
+     <strong>Measurements:</strong> ${tot} total (${n} on this page)<br>
+     <strong>Scale:</strong> 1px = ${getScale()} ${getUnit()}`;
+  document.getElementById('jobName').value=currentJobName || pdfFileName.replace(/\.pdf$/i,'');
+  document.getElementById('saveDialog').classList.add('open');
+}
+function closeSaveDialog() { document.getElementById('saveDialog').classList.remove('open'); }
+
+function buildJobBlob() {
+  return new Blob([JSON.stringify({
+    version: 5,
+    dimStyles,
+    activeDimStyleId,
+    savedAt: new Date().toISOString(),
+    pdfFileName,
+    pdfData: pdfRawB64,
+    scale: getScale(),
+    unit: getUnit(),
+    zoom,
+    pageNum,
+    scaleZones: JSON.parse(JSON.stringify(scaleZones)),
+    activeZoneId,
+    masterPxPerUnit,
+    masterUnit,
+    zoneIdCounter,
+    groups: JSON.parse(JSON.stringify(groups)),
+    activeGroupId,
+    soloGroupId,
+    ungroupedVisible,
+    groupIdCounter,
+    measurements: JSON.parse(JSON.stringify(measurements))
+  })], {type:'application/json'});
+}
+
+function doSaveJob() {
+  const jobName=(document.getElementById('jobName').value||'job').trim();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(buildJobBlob());
+  a.download=jobName+'.pmjob';
+  a.click();
+  currentJobName = jobName;
+  showSaveButton();
+  closeSaveDialog();
+}
+
+function quickSave() {
+  if (!currentJobName || !pdfDoc) { openSaveDialog(); return; }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(buildJobBlob());
+  a.download=currentJobName+'.pmjob';
+  a.click();
+  // Flash button to confirm
+  const btn=document.getElementById('btnSave');
+  btn.textContent='✓ Saved';
+  setTimeout(()=>{ btn.textContent='💾 Save'; },1500);
+}
+
+function showSaveButton() {
+  document.getElementById('btnSave').style.display='flex';
+}
+
+// ─────────────────────────────────────────────
+//  Load Job
+// ─────────────────────────────────────────────
+function loadJob(input) {
+  const file=input.files[0]; if(!file) return;
+  loadJobFromFile(file);
+}
+
+function loadJobFromFile(file) {
+  if (!file) { alert('No file selected.'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const text = e.target.result;
+      const job  = JSON.parse(text);
+      if (!job.pdfData) { alert('Invalid .pmjob file — missing PDF data.'); return; }
+      pdfRawB64    = job.pdfData;
+      pdfFileName  = job.pdfFileName || 'document.pdf';
+      measurements = job.measurements || [];
+      selectedIdx  = -1;
+      colorIdx     = measurements.length;
+      document.getElementById('scaleVal').value = job.scale || 1;
+      document.getElementById('unitSel').value  = job.unit  || 'mm';
+      zoom    = job.zoom    || 1;
+      pageNum = job.pageNum || 1;
+      document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
+      scaleZones      = job.scaleZones      || [];
+      activeZoneId    = job.activeZoneId    || (scaleZones[0]?.id || null);
+      masterPxPerUnit = job.masterPxPerUnit || null;
+      masterUnit      = job.masterUnit      || 'mm';
+      zoneIdCounter   = job.zoneIdCounter   || (scaleZones.length + 1);
+      if (job.dimStyles) { dimStyles = job.dimStyles; activeDimStyleId = job.activeDimStyleId || 'style_plain'; }
+      groups           = job.groups          || [];
+      activeGroupId    = job.activeGroupId   || null;
+      soloGroupId      = job.soloGroupId     || null;
+      ungroupedVisible = job.ungroupedVisible !== false;
+      groupIdCounter   = job.groupIdCounter  || (groups.length + 1);
+      undoStack = []; redoStack = [];  // clear history on load
+      currentJobName = file.name.replace(/\.pmjob$/i, '');
+      showSaveButton();
+      renderScaleZones(); renderActiveChip(); renderGroupList(); updateMeasList(); updateUndoBtns(); renderDimStyleBtn();
+      initPdfDoc(base64ToArrayBuffer(pdfRawB64), true);
+    } catch(err) {
+      alert('Failed to load job:\n' + err.message + '\n\nCheck the browser console for details.');
+      console.error('loadJobFromFile error:', err);
+    }
+  };
+  reader.onerror = () => alert('Could not read file.');
+  reader.readAsText(file);
+}
+
+// ─────────────────────────────────────────────
+//  Keyboard shortcuts
+// ─────────────────────────────────────────────
+// Redraw when shift is pressed/released mid-draw so the constraint snaps live
+document.addEventListener('keydown', e=>{
+  if ((e.ctrlKey||e.metaKey) && e.key==='z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey||e.metaKey) && (e.key==='y' || (e.key==='z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+  if (e.key === 'Shift' && drawing && currentTool === 'line') {
+    livePdf = constrain(startPdf, livePdf, true); drawLive(); return;
+  }
+  if (e.key === 'Shift' && currentTool === 'polygon' && polyPoints.length > 0) {
+    redraw(); return;
+  }
+  if (e.key === 'Shift' && currentTool === 'chain' && chainPoints.length > 0) {
+    redraw(); return;
+  }
+  if (e.key === 'Shift' && dragActive && dragNodeIdx >= 0) {
+    const m = measurements[selectedIdx];
+    if (m && (m.type === 'line' || m.type === 'polygon')) redraw();
+    return;
+  }
+  if((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); quickSave(); return; }
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  const map={v:'select',l:'line',r:'rect',c:'circle',a:'angle',p:'polygon'};
+  if(map[e.key.toLowerCase()]) setTool(map[e.key.toLowerCase()]);
+  if((e.key==='Delete'||e.key==='Backspace')&&selectedIdx>=0) deleteMeas(selectedIdx);
+  if(e.key==='Escape') {
+    polyPoints=[]; anglePoints=[]; chainPoints=[];
+    drawing=false; startSnapResult=null;
+    if (currentTool==='chain' && chainPoints.length>=2) finishChain(); else chainPoints=[];
+    if (currentTool==='count') finishCount();
+    redraw();
+  }
+  if(e.key==='+'||e.key==='=') adjustZoom(0.25);
+  if(e.key==='-') adjustZoom(-0.25);
+  if(e.key==='Enter'&&currentTool==='polygon'&&polyPoints.length>=3) finishPolygon();
+  if(e.key==='Enter'&&currentTool==='chain'&&chainPoints.length>=2) finishChain();
+});
+
+document.addEventListener('keyup', e=>{
+  if (e.key === 'Shift' && drawing && currentTool === 'line') drawLive();
+  if (e.key === 'Shift' && currentTool === 'polygon' && polyPoints.length > 0) redraw();
+  if (e.key === 'Shift' && currentTool === 'chain' && chainPoints.length > 0) redraw();
+  if (e.key === 'Shift' && dragActive && dragNodeIdx >= 0) {
+    const m = measurements[selectedIdx];
+    if (m && (m.type === 'line' || m.type === 'polygon')) redraw();
+  }
+});
+
+// ── Floating panel drag ──────────────────────────────────────────
+function initFloatPanel() {
+  const panel  = document.getElementById('floatPanel');
+  const header = document.getElementById('floatPanelHeader');
+  const wrap   = document.getElementById('canvasWrap');
+
+  // Move panel to body so it's outside the scrolling canvasWrap
+  document.body.appendChild(panel);
+  document.body.appendChild(document.getElementById('floatShowBtn'));
+
+  // Switch to fixed positioning
+  panel.style.position = 'fixed';
+  document.getElementById('floatShowBtn').style.position = 'fixed';
+
+  let userMoved = false; // true once user has dragged the panel
+
+  function snapToWrap() {
+    if (userMoved) return;
+    const wr = wrap.getBoundingClientRect();
+    panel.style.left = (wr.left + 12) + 'px';
+    panel.style.top  = (wr.top  + 12) + 'px';
+    const btn = document.getElementById('floatShowBtn');
+    btn.style.left = (wr.left + 12) + 'px';
+    btn.style.top  = (wr.top  + 12) + 'px';
+  }
+
+  // Show panel once PDF loads
+  const obs = new MutationObserver(() => {
+    const visible = document.getElementById('canvasContainer').style.display !== 'none';
+    if (visible && panel.style.display === 'none') {
+      panel.style.display = 'block';
+      snapToWrap();
+      obs.disconnect();
+    }
+  });
+  obs.observe(document.getElementById('canvasContainer'), { attributes: true, attributeFilter: ['style'] });
+
+  // Keep panel anchored to wrap top-left on scroll and resize
+  wrap.addEventListener('scroll', snapToWrap);
+  window.addEventListener('resize', snapToWrap);
+
+  // Drag to reposition
+  let dragging = false, ox = 0, oy = 0;
+  header.addEventListener('mousedown', e => {
+    dragging = true;
+    ox = e.clientX - panel.getBoundingClientRect().left;
+    oy = e.clientY - panel.getBoundingClientRect().top;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    userMoved = true;
+    let nx = e.clientX - ox;
+    let ny = e.clientY - oy;
+    // Keep within viewport
+    nx = Math.max(0, Math.min(window.innerWidth  - panel.offsetWidth,  nx));
+    ny = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ny));
+    panel.style.left = nx + 'px';
+    panel.style.top  = ny + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+
+  // Double-click header to snap back to top-left
+  header.addEventListener('dblclick', () => {
+    userMoved = false;
+    snapToWrap();
+  });
+}
+
+function toggleFloatPanel() {
+  const panel = document.getElementById('floatPanel');
+  const btn   = document.getElementById('floatShowBtn');
+  const hidden = panel.style.display === 'none';
+  panel.style.display = hidden ? 'block' : 'none';
+  btn.style.display   = hidden ? 'none'  : 'block';
+  if (hidden) {
+    // Re-snap to wrap when showing
+    const wrap = document.getElementById('canvasWrap');
+    const wr   = wrap.getBoundingClientRect();
+    btn.style.left = (wr.left + 12) + 'px';
+    btn.style.top  = (wr.top  + 12) + 'px';
+  }
+}
+
+// ── Delegated click handler for measurement list ──────────────────
+document.getElementById('measList').addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  e.stopPropagation();
+  const action = el.dataset.action;
+  const idx    = parseInt(el.dataset.idx);
+  if (action === 'select') {
+    selectMeas(idx);               // only toggles CSS class — no rerender
+  } else if (action === 'delete') {
+    deleteMeas(idx);
+  } else if (action === 'edit' || action === 'scale' || action === 'group') {
+    selectedIdx = idx;
+    openMeasDetailDialog(idx);     // unified dialog
+  }
+});
+</script>
+</body>
+</html>
