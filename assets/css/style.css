@@ -27,7 +27,7 @@
   --surface:       #2a1208;
   --border:        rgba(245,166,35,0.15);
   --text:          #FFF8F0;
-  --muted:         rgba(255,248,240,0.6);
+  --muted:         rgba(255,248,240,0.75);
   --accent:        #E8541A;
   --accent2:       #F5A623;
   --success:       #4CAF50;
@@ -189,7 +189,7 @@ a { color: var(--accent2); text-decoration: none; }
 }
 
 .sidebar-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -213,7 +213,7 @@ a { color: var(--accent2); text-decoration: none; }
 
 .field label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
